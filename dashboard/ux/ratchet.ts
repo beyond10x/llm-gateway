@@ -103,12 +103,15 @@ export function compare(baseline: Baseline, measured: Aggregate): Problem[] {
       } else if (value === undefined || !Number.isFinite(value)) {
         problems.push({ scenario, metric, kind: 'missing-measured', baseline: entry.value, measured: null });
       } else {
-        // Worse is up for lower-is-better metrics, down for the others.
+        // Worse is up for lower-is-better metrics, down for the others. The tolerance is a band on
+        // the worse side only: any improvement, also one inside the band, must be taken into the
+        // baseline (baselineFrom takes it). The replays are hermetic and the fonts pinned, so a
+        // repeated measurement gives the same value; a value that moves down is a change.
         const sign = HIGHER_IS_BETTER.has(metric) ? -1 : 1;
         const tolerance = toleranceOf(metric, entry.value);
         const delta = sign * (value - entry.value);
         if (delta > tolerance + EPSILON) problems.push({ scenario, metric, kind: 'worse', baseline: entry.value, measured: value });
-        else if (delta < -tolerance - EPSILON) problems.push({ scenario, metric, kind: 'improved-not-taken', baseline: entry.value, measured: value });
+        else if (delta < -EPSILON) problems.push({ scenario, metric, kind: 'improved-not-taken', baseline: entry.value, measured: value });
       }
     }
   }

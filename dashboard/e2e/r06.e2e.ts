@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { parse as parseYaml } from 'yaml';
-import { FONT_PX, FlowModel } from '../src/flow.ts';
+import { canvasLabelProblems, canvasLabels, recordCanvasText } from './canvas-text.ts';
 import { SCENARIOS, type Scenario } from '../ux/scenarios/index.ts';
 import { openReplay, settle, type Replay } from './harness.ts';
 import { KEY_FONT_PX, THEMES, VIEWPORTS, type Theme, type Viewport } from './profiles.ts';
@@ -161,29 +161,28 @@ test.describe('UXF-011', () => {
   });
 });
 
-// The token flow is a canvas, so its labels are read from the layout the canvas draws (FlowModel,
-// the code FlowCanvas.vue paints with) at the size the page gives the canvas's box.
+// The token flow is a canvas: its labels are read from what the built page draws on it
+// (e2e/canvas-text.ts records every fillText and samples the canvas's pixels in each label's box),
+// under reduced motion so the drawing holds still. Every state at 390x844, then the last state at
+// every viewport.
 test.describe('UXF-014', () => {
-  test('the token flow draws its labels at the key-data size', () => {
-    expect(FONT_PX).toBeGreaterThanOrEqual(KEY_FONT_PX);
-  });
-
   for (const name of ['busy', 'token-flow', 'errors']) {
-    test(`every route name in the token flow is drawn whole at every viewport, 390x844 included — ${name}`, async ({ browser }) => {
-      const page = await opened(browser, name, viewport('390x844'));
+    test(`the token flow draws every label at the key-data size, inside the canvas, and every route name whole, at every viewport, 390x844 included — ${name}`, async ({ browser }) => {
+      const page = await pageAt(browser, viewport('390x844'));
       try {
-        const states = scenario(name).states(Date.now());
+        await recordCanvasText(page);
+        const replay = await openReplay(page, scenario(name), 'light', { reducedMotion: true });
+        const check = async (at: string) => {
+          const routes = replay.states[replay.index]!.routes.map((r) => r.route);
+          const shown = await page.evaluate(canvasLabels);
+          expect(canvasLabelProblems(shown, routes, KEY_FONT_PX), `${at}: ${JSON.stringify(shown.labels.map((l) => `${l.text} ${l.px}px`))}`).toEqual([]);
+        };
+        await eachState(replay, (i) => check(`390x844 state ${i}`));
         for (const v of VIEWPORTS) {
           await page.setViewportSize({ width: v.width, height: v.height });
           await settle(page);
-          const box = await page.locator('.flow-box').evaluate((el) => ({ w: el.clientWidth, h: el.clientHeight }));
-          const model = new FlowModel({ reduced: true });
-          for (const [i, s] of states.entries()) {
-            model.apply(s);
-            const routes = [...model.layout(box.w, box.h).routes.values()];
-            expect(routes.length, `${v.name} state ${i}: routes drawn`).toBe(model.routes.length);
-            for (const r of routes) expect(r.text, `${v.name} state ${i}, a ${box.w} px wide canvas`).toBe(r.key);
-          }
+          await settle(page);
+          await check(`${v.name} last state`);
         }
       } finally {
         await page.context().close();
@@ -255,7 +254,7 @@ test.describe('UXF-019', () => {
       const page = await pageAt(browser, v);
       const all = await pageAt(browser, v);
       try {
-        const [idle, errors] = await Promise.all([openReplay(page, scenario('idle'), theme), openReplay(all, scenario('errors'), theme)]);
+        const [idle, errors] = await Promise.all([openReplay(page, scenario('idle'), theme, { holdPolls: true }), openReplay(all, scenario('errors'), theme, { holdPolls: true })]);
         await stripProblems(page, [], v, `idle ${theme} live`);
         await failStream(idle.page);
         await stripProblems(page, [], v, `idle ${theme} reconnecting before the first poll`);

@@ -179,31 +179,78 @@ export interface KeyDataProbe {
 }
 
 // The one definition of key data, read by the key-font metric and by the gate on it. Every text in
-// the page outside the header is in one of three classes, so a renamed class moves text from one
-// floor to another, never out of every floor:
-// - secondary text, first: a second line under a name (`.small`), a badge, a caption, a column
-//   head, a tile or stat label; secondary text inside a key-data cell or a heading is secondary;
-// - headings (`h1` to `h6`, `[role=heading]`, the page title and a card title included);
-// - key data: table body cells (token counts, rates, statuses, money, route names), definitions,
-//   tile values and their second lines, and the connection status;
-// - every other text (a term, a button, a label, a paragraph) is secondary.
-// The token-flow panel and the skip link are in none. The floors come from the page's type scale
-// (14 px body, 12.25 px caption): key data and headings 14 px (a heading is never smaller than the
-// text under it), secondary text 12 px.
-export function keyDataProbe(): KeyDataProbe {
+// the page outside the header is in one of three classes, chosen by the role the text has in the
+// document, never by a class name, so renaming a class cannot move a value off its floor:
+// - secondary text, first: a column head, a term, a caption (the elements and ARIA roles that name
+//   what is under or beside them);
+// - headings (`h1` to `h6`, `[role=heading]`): the heading's first run and every run set at its
+//   size; a run set smaller inside a heading (a count, an age) is the heading's note, secondary;
+// - key data, what a cell or a metric shows: in a table body cell, a definition or the connection
+//   status (`[role=status]`), the first run and every run set at its size, while a run set smaller
+//   is the value's note (a second line under a name, a badge), secondary; in a metric, every run
+//   but its label, where a label is a text that is one of the `labels` the page's document declares
+//   (e2e/document.ts) and the metric is the element that holds the label and more;
+// - every other text (a button, a link, a paragraph) is secondary.
+// The floors come from the page's type scale (14 px body, 12.25 px caption): key data and headings
+// 14 px (a heading is never smaller than the text under it), secondary text 12 px.
+export function keyDataProbe(labels: string[] = []): KeyDataProbe {
   const KEY_PX = 14;
   const HEADING_PX = 14;
   const SECONDARY_PX = 12;
-  const KEY = 'main tbody td, main tbody th, main dd, .tile .value, .tile .sub, header [role="status"]';
-  const SECONDARY = '.small, .badge, caption, thead th, .tile .label, .stats dt';
+  const NAMING = 'thead th, [role="columnheader"], dt, [role="term"], caption, figcaption, legend';
   const HEADING = 'h1, h2, h3, h4, h5, h6, [role="heading"]';
+  const VALUE = 'tbody td, tbody th, [role="cell"], [role="gridcell"], [role="rowheader"], dd, [role="definition"], [role="status"]';
   const shape = (el: Element) => `${el.tagName.toLowerCase()}${el.classList.length ? `.${[...el.classList].join('.')}` : ''}`;
   const describe = (el: Element) => `${shape(el)} "${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 30)}"`;
+  const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
+  const ownText = (el: Element) => norm([...el.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent ?? '').join(' '));
+  const px = (el: Element) => parseFloat(getComputedStyle(el).fontSize);
   const out = { key: null as FontItem | null, heading: null as FontItem | null, secondary: null as FontItem | null };
   const below = { key: new Set<string>(), heading: new Set<string>(), secondary: new Set<string>() };
   const floor = { key: KEY_PX, heading: HEADING_PX, secondary: SECONDARY_PX };
+
+  // The size of the first run of text in a holder (a heading, a cell): what the holder shows.
+  const firstSize = new Map<Element, number>();
+  const firstOf = (holder: Element): number => {
+    const known = firstSize.get(holder);
+    if (known !== undefined) return known;
+    const walker = document.createTreeWalker(holder, NodeFilter.SHOW_TEXT);
+    let size = px(holder);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const parent = n.parentElement;
+      if (!(n.textContent ?? '').trim() || !parent) continue;
+      const cs = getComputedStyle(parent);
+      if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+      size = parseFloat(cs.fontSize);
+      break;
+    }
+    firstSize.set(holder, size);
+    return size;
+  };
+
+  // The metrics: an element whose own text is a declared label, widened to the element that holds
+  // only it (`div > abbr`), is the label; the element that holds the label and more is the metric.
+  const declared = new Set(labels.map(norm));
+  const labelOf = new Set<Element>();
+  const metric = new Set<Element>();
+  if (declared.size > 0) {
+    for (const el of document.querySelectorAll('main *')) {
+      if (el.closest(`${NAMING}, ${HEADING}, ${VALUE}`)) continue;
+      const text = ownText(el);
+      if (!text || !declared.has(text)) continue;
+      let top = el;
+      while (top.parentElement && top.parentElement !== document.body && norm(top.parentElement.textContent ?? '') === text) top = top.parentElement;
+      labelOf.add(top);
+      if (top.parentElement) metric.add(top.parentElement);
+    }
+  }
+  const within = (el: Element, set: Set<Element>) => {
+    for (let e: Element | null = el; e; e = e.parentElement) if (set.has(e)) return true;
+    return false;
+  };
+
   for (const el of document.querySelectorAll('body *')) {
-    if (el.closest('.flow-panel, .skip, script, style, noscript, template')) continue;
+    if (el.closest('script, style, noscript, template')) continue;
     const inHeader = el.closest('header');
     if (inHeader && !el.closest('header [role="status"], header h1')) continue;
     const cs = getComputedStyle(el);
@@ -211,11 +258,19 @@ export function keyDataProbe(): KeyDataProbe {
     const r = el.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) continue;
     if (![...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim())) continue;
-    const px = parseFloat(cs.fontSize);
-    const kind: keyof typeof floor = el.closest(SECONDARY) ? 'secondary' : el.closest(HEADING) ? 'heading' : el.closest(KEY) ? 'key' : 'secondary';
+    const size = parseFloat(cs.fontSize);
+    const heading = el.closest(HEADING);
+    const value = el.closest(VALUE);
+    let kind: keyof typeof floor;
+    if (el.closest(NAMING)) kind = 'secondary';
+    else if (heading) kind = size >= firstOf(heading) - 1e-6 ? 'heading' : 'secondary';
+    else if (value) kind = size >= firstOf(value) - 1e-6 ? 'key' : 'secondary';
+    else if (within(el, labelOf)) kind = 'secondary';
+    else if (within(el, metric)) kind = 'key';
+    else kind = 'secondary';
     const seen = out[kind];
-    if (!seen || px < seen.px) out[kind] = { px, at: describe(el) };
-    if (px < floor[kind] - 1e-6) below[kind].add(`${px}px ${shape(el)}`);
+    if (!seen || size < seen.px) out[kind] = { px: size, at: describe(el) };
+    if (size < floor[kind] - 1e-6) below[kind].add(`${size}px ${shape(el)}`);
   }
   return {
     ...out,
@@ -507,8 +562,8 @@ export interface StateProbe {
 // The probes of one state in one call: layout and always-visible elements at the top and at the end
 // of the document, then key data at the top. Scrolling changes layout synchronously, so the
 // probes read the scrolled page without waiting for a frame. Built from the probes' own source,
-// like page.evaluate(fn) does.
-export function stateProbeSource(): string {
+// like page.evaluate(fn) does. `labels`: the labels the page's document declares (e2e/document.ts).
+export function stateProbeSource(labels: string[]): string {
   return `(() => {
     const layout = ${layoutProbe.toString()};
     const header = ${headerProbe.toString()};
@@ -520,7 +575,7 @@ export function stateProbeSource(): string {
       views.push({ layout: layout(), header: header() });
     }
     window.scrollTo(0, 0);
-    return { views, key_data: keyData(), copy: copy() };
+    return { views, key_data: keyData(${JSON.stringify(labels)}), copy: copy() };
   })()`;
 }
 

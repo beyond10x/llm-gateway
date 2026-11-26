@@ -1,5 +1,5 @@
 {
-  "about": "Worst value per scenario over the gating viewports (1366x768, 1280x720) and both themes, and the sideways scrollers at each measured-only viewport (overflow.scrollers.<viewport>, the worst over both themes). Re-taken by the harness at commit 5a2e3003 on the built page of round R-06 with sha256 249874c33fcb. Lower is better, except flow.visible_ratio, flow.drawn and screen_only.reached, where higher is better. Written by `pnpm ux:round R-nn --baseline`.",
+  "about": "Worst value per scenario over the gating viewports (1366x768, 1280x720) and both themes, and the sideways scrollers at each measured-only viewport (overflow.scrollers.<viewport>, the worst over both themes). Re-taken by the harness at commit 48c98e76 on the built page of round R-06 with sha256 249874c33fcb. Lower is better, except flow.visible_ratio, flow.drawn and screen_only.reached, where higher is better. Written by `pnpm ux:round R-nn --baseline`.",
   "scenarios": {
     "busy": {
       "axe.serious_critical": {
@@ -173,8 +173,9 @@
         "tolerance": 0
       },
       "screen_only.looks": {
-        "value": 2,
-        "tolerance": 0
+        "value": 3,
+        "tolerance": 0,
+        "decision": "R-06-T23"
       },
       "screen_only.reached": {
         "value": 1,

@@ -2,12 +2,14 @@
 // one way and asserts the tool reports it, so a gate that passes is not passing by construction.
 import { expect, test, type Page } from '@playwright/test';
 import { SCENARIOS } from '../ux/scenarios/index.ts';
+import { CANVAS_TEXT, canvasLabelProblems, canvasLabels, recordCanvasText } from './canvas-text.ts';
 import { copyProbe } from './copy.ts';
 import { fontMode, MONO_FAMILY } from './fonts.ts';
-import { openReplay, themeToggleProblems } from './harness.ts';
+import { openReplay, runHeldPolls, themeToggleProblems } from './harness.ts';
 import { reducedMotionReplay } from './measure.ts';
 import { flowProblems, keyDataItems } from './metrics.ts';
 import { canvasPixels, flowProbe, focusStep, headerProbe, keyDataProbe, layoutProbe } from './probe.ts';
+import { dropConnection, failStream } from './r06-problems.ts';
 import { playTask, type ScreenTask } from './screen-only.ts';
 
 const scenario = (name: string) => SCENARIOS.find((s) => s.name === name)!;
@@ -166,6 +168,67 @@ test.describe('token-flow canvas metric', () => {
     await page.waitForTimeout(500);
     expect(await page.evaluate(canvasPixels)).not.toEqual(before);
   });
+
+  test('break: the reduced-motion replay shares the measured replay\'s context, and each page sees only its own motion preference', async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    try {
+      const reduces = (p: Page) => p.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
+      const main = await context.newPage();
+      await openReplay(main, scenario('idle'), 'light');
+      const quiet = await context.newPage();
+      await openReplay(quiet, scenario('idle'), 'light', { reducedMotion: true });
+      expect([await reduces(main), await reduces(quiet)]).toEqual([false, true]);
+    } finally {
+      await context.close();
+    }
+  });
+});
+
+test.describe('token-flow canvas labels', () => {
+  test('break: a label under 14 px, a label cut with an ellipsis, a label past the edge and a label that leaves no paint are reported; whole labels inside pass', async ({ page }) => {
+    await page.setContent(`<section><h2>Token flow</h2><canvas width="300" height="120" style="width:300px;height:120px"></canvas></section>`);
+    await page.evaluate(CANVAS_TEXT);
+    await page.evaluate(() => {
+        const c = document.querySelector('canvas')!.getContext('2d')!;
+        c.clearRect(0, 0, 300, 120);
+        c.textBaseline = 'middle';
+        c.font = '14px monospace'; c.fillText('qwen-coder', 10, 20); c.fillText('claude-son…', 10, 40); c.fillText('far-route-name', 250, 60);
+        c.font = '12px monospace'; c.fillText('claude-haiku', 10, 80);
+        c.font = '14px monospace'; c.fillStyle = 'rgba(0, 0, 0, 0)'; c.fillText('ghost', 10, 100);
+    });
+    const shown = await page.evaluate(canvasLabels);
+    expect(shown.labels.map((l) => l.text)).toEqual(['qwen-coder', 'claude-son…', 'far-route-name', 'claude-haiku', 'ghost']);
+    expect(canvasLabelProblems(shown, ['qwen-coder', 'claude-sonnet', 'claude-haiku', 'far-route-name'], 14)).toEqual([
+      `"far-route-name" runs past the canvas (${Math.round(shown.labels[2]!.box.left)} to ${Math.round(shown.labels[2]!.box.right)} of 300 px)`,
+      '"claude-haiku" drawn at 12 px, under 14 px',
+      '"ghost" leaves no paint in its box',
+      'route "claude-sonnet" is cut to "claude-son…"',
+    ]);
+    expect(canvasLabelProblems({ ...shown, labels: shown.labels.slice(0, 1) }, ['qwen-coder'], 14)).toEqual([]);
+  });
+
+  test('break: on the built page, labels drawn at 12 px or cut short are reported', async ({ browser }) => {
+    const run = async (patch: string | null) => {
+      const context = await browser.newContext({ viewport: { width: 1366, height: 768 }, reducedMotion: 'reduce' });
+      try {
+        const page = await context.newPage();
+        await recordCanvasText(page);
+        if (patch) await page.addInitScript(patch);
+        const replay = await openReplay(page, scenario('busy'), 'light', { reducedMotion: true });
+        while (replay.index + 1 < replay.states.length) await replay.advance();
+        return canvasLabelProblems(await page.evaluate(canvasLabels), replay.states[replay.index]!.routes.map((r) => r.route), 14);
+      } finally {
+        await context.close();
+      }
+    };
+    const small = `(() => { const d = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'font'); Object.defineProperty(CanvasRenderingContext2D.prototype, 'font', { ...d, set(v) { d.set.call(this, String(v).replace(/\\b14px\\b/, '12px')); } }); })();`;
+    const cut = `(() => { const f = CanvasRenderingContext2D.prototype.fillText; CanvasRenderingContext2D.prototype.fillText = function (t, ...rest) { const s = String(t); return f.call(this, s.length > 6 ? s.slice(0, 5) + '…' : s, ...rest); }; })();`;
+    const [whole, smaller, shorter] = await Promise.all([run(null), run(small), run(cut)]);
+    expect(whole, 'the page as built').toEqual([]);
+    expect(smaller.length).toBeGreaterThan(0);
+    expect(smaller.every((p) => / drawn at 12 px, under 14 px$/.test(p))).toBe(true);
+    expect(shorter.some((p) => /^route "[^"]+" is cut to "[^"]{5}…"$/.test(p))).toBe(true);
+  });
 });
 
 // A header with one always-visible control: a segmented control with rounded ends that clips its
@@ -270,11 +333,12 @@ test.describe('replay', () => {
 });
 
 // One page with every kind of copy defect once, and the forms the probe must leave alone: a space,
-// a block boundary, generated content, a raw value in a code element or a `.mono` cell, a title
+// a block boundary, generated content, a raw value in a code element or a monospace cell, a title
 // attribute, a control with a word.
 const COPY_PAGE = `<!doctype html><html><head><style>
   .b::before { content: ' · '; }
   .card h3 { display: flex; gap: 6px; }
+  .mono { font-family: monospace; }
 </style></head><body><main>
 <section aria-labelledby="h-a"><h2 id="h-a">Overview</h2>
   <div class="tile"><div class="label">Tokens in</div><div class="sub">1.88k tok/s<span class="muted">last 60 s</span></div></div>
@@ -302,6 +366,39 @@ test.describe('visible text (copy)', () => {
       'run-together #h-b th.col-session',
       'snake-label #h-a div.tile div.label',
       'snake-value #h-a div.tile div.value',
+    ]);
+  });
+
+  // The R-06 review's inputs: what the eye reads as one word, set by the rendered boxes, not by the
+  // markup. Each case is a section of its own, so its item names its place.
+  const GEOMETRY_PAGE = `<!doctype html><html><head><style>
+    body { font: 14px sans-serif; } section { margin: 8px 0; } .mono { font-family: monospace; }
+  </style></head><body><main>
+    <section id="flex"><div style="display:flex"><span>1.88k tok/s</span><span>last 60 s</span></div></section>
+    <section id="grid"><div style="display:grid;grid-template-columns:auto auto;justify-content:start"><span>claude-code</span><span>3f9a1c0e</span></div></section>
+    <section id="margin"><span>alpha</span><span style="margin-left:8px">beta</span></section>
+    <section id="padding"><span style="padding-right:4px">alpha</span><span>beta</span></section>
+    <section id="spaced-flex"><div style="display:flex;gap:6px"><span>1.88k tok/s</span><span>last 60 s</span></div></section>
+    <section id="unit"><span>12</span><span>ms</span> and <span>4.2</span><span>k</span></section>
+    <section id="power"><p>x<sup>2</sup> and e<sub>i</sub></p></section>
+    <section id="percent"><span>12%</span><span>errors</span></section>
+    <section id="paren"><span>(3 of 5)</span><span>errors</span></section>
+    <section id="bracket"><span>[beta]</span><span>route</span></section>
+    <section id="percent-digit"><span>12%</span><span>3</span></section>
+    <section id="lines"><span>alpha</span><br><span>beta</span></section>
+    <section id="cells"><table><tbody><tr><td>qwen_coder</td><td class="mono">qwen_coder</td></tr></tbody></table></section>
+  </main></body></html>`;
+
+  test('break: runs whose boxes touch on one line run together, whatever the markup; a margin, a unit, a superscript and a monospace cell do not; a run ending in %, ) or ] counts', async ({ page }) => {
+    await page.setContent(GEOMETRY_PAGE);
+    const items = (await page.evaluate(copyProbe)).map((i) => i.split(' | ')[0]).sort();
+    expect(items).toEqual([
+      'run-together #bracket span',
+      'run-together #flex span',
+      'run-together #grid span',
+      'run-together #paren span',
+      'run-together #percent span',
+      'snake-value #cells td',
     ]);
   });
 
@@ -341,15 +438,30 @@ test.describe('screen-only user', () => {
     expect(await play(page, `${SPACER(1500)}<p>claude-sonnet failed: 429</p>${SPACER(3000)}`)).toMatchObject({ reached: true, actions: 2, looks: 3, steps: ['look', 'scroll', 'look', 'scroll', 'look'] });
   });
 
-  test('break: a visible link named for the task is one action; the same link covered is not used', async ({ page }) => {
+  test('break: a visible link named for the task is one action, and a link that jumps the page costs glance 3; the same link covered is not used', async ({ page }) => {
     const body = (cover: boolean) =>
       `<p><a href="#calls">claude-sonnet: 4 errors</a></p>${cover ? '<div style="position:fixed;left:0;top:0;width:100%;height:80px;background:#fff"></div>' : ''}${SPACER(2000)}<section id="calls"><table><tr><td>claude-sonnet</td><td>429</td></tr></table></section>${SPACER(2000)}`;
+    // The R-06 review's input: an anchor 2000 px down read actions 1, looks 1.
     const followed = await play(page, body(false));
-    expect(followed).toMatchObject({ reached: true, actions: 1, looks: 1 });
-    expect(followed.steps).toContain('click link claude-sonnet: 4 errors');
+    expect(followed).toMatchObject({ reached: true, actions: 1, looks: 3 });
+    expect(followed.steps).toContain('click link claude-sonnet: 4 errors (the page jumped)');
     const covered = await play(page, body(true));
     expect(covered.steps.some((s) => s.startsWith('click'))).toBe(false);
     expect(covered).toMatchObject({ reached: true, looks: 3 });
+    // A button that shows the truth where the person looks moves nothing: glance by position.
+    const inPlace = await play(page, `<button onclick="document.getElementById('x').hidden = false">Show errors</button><p id="x" hidden>claude-sonnet failed: 429</p>${SPACER(3000)}`);
+    expect(inPlace).toMatchObject({ reached: true, actions: 1, looks: 1, steps: ['look', 'click button Show errors', 'look'] });
+  });
+
+  test('break: a truth cut by an ellipsis, faded under 0.5 opacity or set in a colour under 3:1 on its background is not seen; the same text readable is', async ({ page }) => {
+    const truth = 'claude-sonnet failed: 429 rate limited';
+    const at = (style: string) => `<p style="${style}">${truth}</p>${SPACER(600)}`;
+    expect(await play(page, at('color:#1b1d21'))).toMatchObject({ reached: true, actions: 0, looks: 1 });
+    expect(await play(page, at('width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'))).toMatchObject({ reached: false });
+    expect(await play(page, at('opacity:0.3'))).toMatchObject({ reached: false });
+    expect(await play(page, at('color:#ffffff'))).toMatchObject({ reached: false });
+    expect(await play(page, at('color:#c8c8c8'))).toMatchObject({ reached: false });
+    expect(await play(page, `<div style="background:#1b1d21">${at('color:#e6e8eb')}</div>`)).toMatchObject({ reached: true, looks: 1 });
   });
 
   test('break: a route and a cause in two different rows, or no truth at all, are not reached', async ({ page }) => {
@@ -363,16 +475,35 @@ test.describe('screen-only user', () => {
 test.describe('key data', () => {
   test('break: a page with no key text is refused, a heading under 14 px and any other text under 12 px are reported', async ({ page }) => {
     await page.setContent('<main><p>only a paragraph</p></main>');
-    const none = await page.evaluate(keyDataProbe);
+    const none = await page.evaluate(keyDataProbe, []);
     expect(none.key).toBeNull();
     expect(keyDataItems({ key_font_min_px: none.key?.px ?? null, details: { key_font_below: none.key_below, heading_font_below: none.heading_below, secondary_font_below: none.secondary_below } })).toContain('no key text');
-    await page.setContent(`<main><h2 style="font-size:13.3px">Routes</h2><div class="card"><h3 style="font-size:14px">Limits <span class="mono" style="font-size:12.6px">3fa9c1d2</span></h3></div>
+    await page.setContent(`<main><h2 style="font-size:13.3px">Routes</h2><div class="card"><h3 style="font-size:12.6px">Limits <span class="mono">3fa9c1d2</span> <span class="small" style="font-size:11px">seen 5s ago</span></h3></div>
       <table><tbody><tr><td style="font-size:14px">qwen-coder</td></tr></tbody></table>
       <button style="font-size:11px">Show all 40</button><dl class="headers"><dt style="font-size:11.5px">status</dt><dd style="font-size:14px">allowed</dd></dl></main>`);
-    const k = await page.evaluate(keyDataProbe);
+    const k = await page.evaluate(keyDataProbe, []);
     expect(k.key?.px).toBe(14);
-    expect(k.heading_below).toEqual(['12.6px span.mono', '13.3px h2']);
-    expect(k.secondary_below).toEqual(['11.5px dt', '11px button']);
+    expect(k.heading_below).toEqual(['12.6px h3', '12.6px span.mono', '13.3px h2']);
+    expect(k.secondary_below).toEqual(['11.5px dt', '11px button', '11px span.small']);
+  });
+
+  // The R-06 review's input: a tile value renamed `.metric-value` at 12 px read as 14 px key data.
+  // Here every class is one a secondary text would have; the roles still say what is a value.
+  const RENAMED = `<main>
+    <section><div class="kpi"><div class="value">Tokens in</div><div class="metric-value small" style="font-size:12px">4.76M</div><div class="badge" style="font-size:14px">1.86k tok/s</div></div>
+      <div class="kpi"><div class="sub"><abbr title="share of cached prompt tokens">Cache hit rate</abbr></div><div class="label" style="font-size:12px">88%</div></div></section>
+    <table><tbody><tr><td class="label"><span class="small" style="font-size:12.5px">qwen-coder</span> <span class="badge" style="font-size:12.25px">vLLM</span></td><td style="font-size:14px">1.2k</td></tr>
+      <tr><th class="badge" style="font-size:12px">claude-sonnet</th><td style="font-size:14px">3</td></tr></tbody></table>
+    <dl class="stats"><dt style="font-size:12.25px">Name</dt><dd class="small" style="font-size:12px">runpod</dd></dl></main>`;
+
+  test('break: a value at 12 px is key data by its role (a cell, a definition, what a metric shows), whatever its class', async ({ page }) => {
+    await page.setContent(RENAMED);
+    const labels = ['Tokens in', 'Cache hit rate', 'Name'];
+    const k = await page.evaluate(keyDataProbe, labels);
+    expect(k.key_below).toEqual(['12.5px span.small', '12px dd.small', '12px div.label', '12px div.metric-value.small', '12px th.badge']);
+    expect(k.secondary_below, 'the labels and the badge after a value are secondary, at or over 12 px').toEqual([]);
+    // Without the document's labels a metric's value is not known as one: the labels carry the role.
+    expect((await page.evaluate(keyDataProbe, [])).key_below).toEqual(['12.5px span.small', '12px dd.small', '12px th.badge']);
   });
 });
 
@@ -397,5 +528,22 @@ test.describe('connection loss', () => {
     expect(await replay.status()).toMatch(/offline/i);
     expect(replay.snapshotFetches).toBe(2);
     expect(replay.blocked).toEqual([]);
+  });
+
+  test('break: a held poll runs at once and the header reads polling without waiting 5 s; a poll the harness does not hold cannot be run', async ({ page }) => {
+    const held = await openReplay(page, scenario('idle'), 'light', { holdPolls: true });
+    const start = Date.now();
+    await dropConnection(page);
+    expect(await held.status()).toMatch(/^polling every /);
+    expect(held.snapshotFetches).toBe(2);
+    expect(Date.now() - start, 'no wait for the poll interval').toBeLessThan(2_000);
+    const free = await page.context().newPage();
+    try {
+      await openReplay(free, scenario('idle'), 'light');
+      await failStream(free);
+      await expect(runHeldPolls(free)).rejects.toThrow('the page started no poll after its stream failed');
+    } finally {
+      await free.close();
+    }
   });
 });

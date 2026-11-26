@@ -130,7 +130,21 @@ async function ready(page: Page): Promise<void> {
   await page.waitForFunction(() => (window as unknown as { __uxStream: { count(): number } }).__uxStream.count() > 0);
 }
 
-export async function openReplay(page: Page, scenario: Scenario, theme: Theme, opts: { reducedMotion?: boolean } = {}): Promise<Replay> {
+// Runs every poll the page set (HELD_POLLS) once, as if its interval had passed, and waits for the
+// page to draw what it read. Refuses a page that set none.
+export async function runHeldPolls(page: Page): Promise<void> {
+  const polls = await page.evaluate(async () => {
+    const held = (window as unknown as { __uxPolls?: (() => unknown)[] }).__uxPolls ?? [];
+    for (const poll of held) await poll();
+    return held.length;
+  });
+  if (polls === 0) throw new Error('the page started no poll after its stream failed');
+  await settle(page);
+}
+
+// `holdPolls`: hold the page's poll so a test runs it with runHeldPolls instead of waiting out its
+// interval; a scenario that loses its connection always holds it.
+export async function openReplay(page: Page, scenario: Scenario, theme: Theme, opts: { reducedMotion?: boolean; holdPolls?: boolean } = {}): Promise<Replay> {
   const states = scenario.states(Date.now());
   const blocked: string[] = [];
   let index = 0;
@@ -144,7 +158,7 @@ export async function openReplay(page: Page, scenario: Scenario, theme: Theme, o
   await pinFonts(page);
   await page.addInitScript(OBSERVER);
   await page.addInitScript(FAKE_STREAM);
-  if (losesConnection) await page.addInitScript(HELD_POLLS);
+  if (losesConnection || opts.holdPolls) await page.addInitScript(HELD_POLLS);
   await page.route('**/*', async (route) => {
     const url = route.request().url();
     if (url === PAGE_URL) {
@@ -193,13 +207,7 @@ export async function openReplay(page: Page, scenario: Scenario, theme: Theme, o
         lost = true;
         await page.evaluate(() => (window as unknown as { __uxStream: { fail(): void } }).__uxStream.fail());
         await settle(page);
-        const polls = await page.evaluate(async () => {
-          const held = (window as unknown as { __uxPolls?: (() => unknown)[] }).__uxPolls ?? [];
-          for (const poll of held) await poll();
-          return held.length;
-        });
-        if (polls === 0) throw new Error('the page started no poll after its stream failed');
-        await settle(page);
+        await runHeldPolls(page);
       } else if (action === 'expand-first-attempts') {
         await replay.click(page.locator('button[aria-expanded="false"]').first());
       } else {

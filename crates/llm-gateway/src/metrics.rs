@@ -156,10 +156,10 @@ struct Series {
     help: &'static str,
 }
 
-/// The eleven process-wide series: llmgw's eight in llmgw's order (matrix row O1), then the
-/// gateway's own spend-refusal series and its two interaction-record series
+/// The twelve process-wide series: llmgw's eight in llmgw's order (matrix row O1), then the
+/// gateway's own spend-refusal series and its three interaction-record series
 /// (story:finished-call-facts).
-const PROCESS: [Series; 11] = [
+const PROCESS: [Series; 12] = [
     Series {
         name: "llmgw_inference_requests_total",
         help: "Model calls the gateway was asked to relay, one per usage record.",
@@ -202,7 +202,11 @@ const PROCESS: [Series; 11] = [
     },
     Series {
         name: "llmgw_interaction_records_skipped_total",
-        help: "Finished calls whose bytes were over the bound, left out of the interaction record.",
+        help: "Finished calls left out of the interaction record: bytes over the bound or not decoded, or a call that lifts to no step.",
+    },
+    Series {
+        name: "llmgw_interaction_records_failed_total",
+        help: "Finished calls the embedding queued for its interaction record and failed to store.",
     },
 ];
 
@@ -287,6 +291,7 @@ enum Process {
     PodStartSpendRefusals,
     InteractionRecordsDropped,
     InteractionRecordsSkipped,
+    InteractionRecordsFailed,
 }
 
 /// A per-route counter, by its place in [`ROUTE`].
@@ -303,7 +308,7 @@ enum Route {
 /// shares it with the relay through [`crate::Relay::with_metrics`]. Every counter only grows.
 #[derive(Debug, Default)]
 pub struct Metrics {
-    process: [AtomicU64; 11],
+    process: [AtomicU64; 12],
     /// Per (alias, wire) a relayed model declares, registered at zero when the relay is
     /// composed. A call on any other pair feeds the process-wide series only.
     routes: Mutex<BTreeMap<(String, Wire), [u64; 5]>>,
@@ -341,10 +346,17 @@ impl Metrics {
         self.add(Process::InteractionRecordsDropped, 1);
     }
 
-    /// Counts a finished call whose bytes were over the bound ([`crate::CallBytes::OverBound`]),
-    /// whose record the embedding left out (`llmgw_interaction_records_skipped_total`).
+    /// Counts a finished call whose record the embedding left out: its bytes were over the bound
+    /// ([`crate::CallBytes::OverBound`]) or not decoded ([`crate::CallBytes::Undecodable`]), or
+    /// it lifts to no step (`llmgw_interaction_records_skipped_total`).
     pub fn count_interaction_record_skipped(&self) {
         self.add(Process::InteractionRecordsSkipped, 1);
+    }
+
+    /// Counts a finished call the embedding queued for its interaction record and then failed
+    /// to store (`llmgw_interaction_records_failed_total`, story:interaction-record-store).
+    pub fn count_interaction_record_failed(&self) {
+        self.add(Process::InteractionRecordsFailed, 1);
     }
 
     /// Counts a setup instructions answer served at `GET /` (`llmgw_instruction_views_total`,

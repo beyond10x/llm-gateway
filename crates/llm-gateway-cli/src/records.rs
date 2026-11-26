@@ -6,10 +6,15 @@
 //! The adapter implements the gateway's [`FinishedCalls`] port. It is called on the connection's
 //! thread and never waits: the lift is a pure function of the call and the session's state, and
 //! the append only queues. A full queue drops the call and counts it; a call whose bytes were not
-//! copied (over the bound, or an answer that was not decoded) is not lifted and is counted
-//! skipped. Each session's lift state is held for at most `sessions_held` sessions, the least
-//! recently used forgotten first: a forgotten session's next call opens it again and starts a
-//! new agent.
+//! copied (over the bound, or an answer that was not decoded), or whose lift yields no step, is
+//! not queued and is counted skipped; a call the writer fails to store is counted failed. Each
+//! session's lift state is held for at most `sessions_held` sessions, the least recently used
+//! forgotten first: a forgotten session's next call continues under the same agent id, without
+//! the chain state of its earlier turns.
+//!
+//! The port hands the bytes by reference (`Option<&CallBytes>`), and the lift takes them owned
+//! (`WireCall`), so they are copied once more here; moving them needs the port to hand them by
+//! value, a change of the gateway crate.
 
 use crate::{
     config::InteractionRecordsConfig,
@@ -18,32 +23,50 @@ use crate::{
 use llm_gateway::{
     AnswerBytes, CallBytes, CallEnding, FinishedCall, FinishedCalls, Harness, Metrics, Relay, Wire,
 };
+use rusqlite::{OpenFlags, OptionalExtension};
 use sessionspec_records::{
-    append::{Appender, AppenderHandle},
+    append::{Appender, AppenderHandle, Stats},
+    store::SCHEMA_VERSION,
     wire::{self, Answer, GatewayFacts, WireCall, WireSession},
 };
 use sessionspec_types::session as s;
 use std::{
     collections::{BTreeMap, HashMap},
     path::Path,
-    sync::{Arc, Mutex, PoisonError},
+    sync::{Arc, Mutex, PoisonError, Weak, atomic::Ordering},
+    thread,
+    time::{Duration, Instant},
 };
+
+/// How long the stop waits for the writer to store its queue (D96).
+const DRAIN: Duration = Duration::from_secs(2);
+/// How often the writer's failure count is read.
+const FAILURES_READ: Duration = Duration::from_millis(100);
 
 /// The relay with the adapter and the byte copy when the document declares
 /// `[interaction_records]`, and the relay unchanged without it: then no byte is copied, no
-/// writer thread runs and no file is created.
+/// writer thread runs and no file is created. With it, also what the stop waits on.
 ///
 /// # Errors
 /// `config:value` naming `interaction_records.path`, never the path itself, when its directory
-/// does not exist or the file does not open as a session store.
+/// does not exist, the file is no session store or holds another schema version, or it does
+/// not open.
 pub(crate) fn compose(
     relay: Relay,
     config: Option<&InteractionRecordsConfig>,
     metrics: &Arc<Metrics>,
-) -> Result<Relay, Refusal> {
+) -> Result<(Relay, Option<Drain>), Refusal> {
     Ok(match start(config, metrics)? {
-        Some((records, bound)) => relay.with_finished_calls(records).with_call_bytes(bound),
-        None => relay,
+        Some((records, bound)) => {
+            let drain = Drain {
+                appender: records.appender.clone(),
+            };
+            (
+                relay.with_finished_calls(records).with_call_bytes(bound),
+                Some(drain),
+            )
+        }
+        None => (relay, None),
     })
 }
 
@@ -62,11 +85,13 @@ fn start(
     if !directory.is_dir() {
         return Err(path_refusal("names a directory that does not exist"));
     }
+    check_store(&config.path)?;
     let (appender, writer) = Appender::spawn(&config.path, config.queue)
         .map_err(|_| path_refusal("cannot be opened as a session store"))?;
     // The writer ends once every handle is dropped and its queue is drained; nothing joins it.
+    // The stop waits for its queue through `Drain` instead.
     drop(writer);
-    let records = InteractionRecords {
+    let records = Arc::new(InteractionRecords {
         appender,
         metrics: Arc::clone(metrics),
         held: Mutex::new(Held {
@@ -75,8 +100,10 @@ fn start(
             sessions: HashMap::new(),
             by_use: BTreeMap::new(),
         }),
-    };
-    Ok(Some((Arc::new(records), config.call_bytes)))
+    });
+    watch_failures(Arc::downgrade(&records))
+        .map_err(|_| path_refusal("cannot start the thread that counts its failures"))?;
+    Ok(Some((records, config.call_bytes)))
 }
 
 fn path_refusal(rule: &str) -> Refusal {
@@ -84,6 +111,97 @@ fn path_refusal(rule: &str) -> Refusal {
         StartupRefusal::ConfigValue,
         format!("interaction_records.path {rule}"),
     )
+}
+
+/// D94: refuses a file at `path` that sessionspec's open would empty: one that is no session
+/// store, or holds another schema version. A missing or empty file is a new store. Only reads.
+fn check_store(path: &Path) -> Result<(), Refusal> {
+    match std::fs::metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(_) => return Err(path_refusal("cannot be read")),
+        Ok(file) if file.len() == 0 => return Ok(()),
+        Ok(_) => {}
+    }
+    let no_store = || path_refusal("is no session store");
+    let connection = rusqlite::Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|_| path_refusal("cannot be read"))?;
+    connection
+        .busy_timeout(DRAIN)
+        .map_err(|_| path_refusal("cannot be read"))?;
+    let version: Option<String> = connection
+        .query_row("SELECT value FROM meta WHERE key = 'schema'", [], |row| {
+            row.get(0)
+        })
+        .optional()
+        .map_err(|_| no_store())?;
+    let version: i64 = version
+        .and_then(|version| version.parse().ok())
+        .ok_or_else(no_store)?;
+    if version == SCHEMA_VERSION {
+        Ok(())
+    } else {
+        Err(path_refusal(&format!(
+            "holds schema version {version}; this gateway writes schema version {SCHEMA_VERSION}"
+        )))
+    }
+}
+
+/// Counts each call the writer failed to store in `llmgw_interaction_records_failed_total`,
+/// read from the writer's own failure count, with one warning line per call naming the series
+/// and never the path. The thread ends with the adapter.
+fn watch_failures(records: Weak<InteractionRecords>) -> std::io::Result<()> {
+    thread::Builder::new()
+        .name("records-failures".to_owned())
+        .spawn(move || {
+            let mut counted = 0;
+            loop {
+                thread::sleep(FAILURES_READ);
+                let Some(records) = records.upgrade() else {
+                    return;
+                };
+                let failed = records.appender.stats().failed.load(Ordering::Relaxed);
+                for _ in counted..failed {
+                    records.metrics.count_interaction_record_failed();
+                    tracing::warn!(
+                        "interaction records: the writer failed to store a call, counted in \
+                         llmgw_interaction_records_failed_total"
+                    );
+                }
+                counted = counted.max(failed);
+            }
+        })
+        .map(drop)
+}
+
+/// What the stop waits on: the writer's counts (D96).
+pub(crate) struct Drain {
+    appender: AppenderHandle,
+}
+
+impl Drain {
+    /// Waits at most 2 s for the writer to store every queued call; the calls still queued then.
+    pub(crate) fn finish(&self) -> u64 {
+        let deadline = Instant::now() + DRAIN;
+        loop {
+            let left = queued(self.appender.stats());
+            if left == 0 || Instant::now() >= deadline {
+                return left;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+
+/// Calls queued and neither stored nor failed yet.
+fn queued(stats: &Stats) -> u64 {
+    let done = stats
+        .written
+        .load(Ordering::Relaxed)
+        .saturating_add(stats.failed.load(Ordering::Relaxed));
+    stats.queued.load(Ordering::Relaxed).saturating_sub(done)
 }
 
 /// The [`FinishedCalls`] adapter.
@@ -134,7 +252,8 @@ impl Held {
 impl FinishedCalls for InteractionRecords {
     fn finished(&self, call: &FinishedCall, bytes: Option<&CallBytes>) {
         // Only a copy can be lifted: a call over the bound, one whose answer was not decoded,
-        // and any other case without bytes is left out and counted.
+        // and any other case without bytes is left out and counted. The copy is cloned: the
+        // port lends it, the lift takes it owned.
         let Some(CallBytes::Copied { request, answer }) = bytes else {
             self.metrics.count_interaction_record_skipped();
             return;
@@ -162,6 +281,12 @@ impl FinishedCalls for InteractionRecords {
         // order they were lifted.
         let mut state = session.lock().unwrap_or_else(PoisonError::into_inner);
         let steps = wire::lift_call(&mut state, &lifted);
+        // D95: a request the lift cannot read yields no step; `append` would take the empty
+        // batch as queued, so it is counted here and never handed on.
+        if steps.is_empty() {
+            self.metrics.count_interaction_record_skipped();
+            return;
+        }
         if !self
             .appender
             .append(&call.session_hash, lifted.facts.harness, steps)

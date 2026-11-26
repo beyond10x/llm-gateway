@@ -50,6 +50,9 @@ llm-runpod = { package = "b10x-llm-runpod", path = "../llm-runpod" }
 # The reasoning seal's HMAC-SHA256 key and tag (src/seal.rs), on the ring the TLS client
 # already links.
 ring = "0.17.14"
+# Reads the interaction record store's schema version before sessionspec's writer opens it
+# (src/records.rs); the version sessionspec-records already links.
+rusqlite = "0.41"
 rustix = { version = "1.1", features = ["fs", "process", "termios"] }
 # The pod connection's TLS client (spec/domains/deployment.yaml, the pod endpoint rule): rustls
 # on its ring provider, never aws-lc-rs, trusting the roots webpki-roots compiles in.
@@ -75,9 +78,6 @@ webpki-roots = "1.0.11"
 flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
 # Test certificates for the loopback https fixture pods, on ring like the client.
 rcgen = { version = "0.14.10", default-features = false, features = ["ring"] }
-# Holds the interaction record store locked, so that its writer stops (tests/interaction_records.rs);
-# the version sessionspec-records already links.
-rusqlite = "0.41"
 rustix = { version = "1.1", features = ["net", "process"] }
 sha2.workspace = true
 # This package with `test-seam`, so that `cargo test` builds `gateway-tls-seam` for the process

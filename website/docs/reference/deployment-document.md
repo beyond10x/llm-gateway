@@ -423,14 +423,19 @@ and appends them to one SQLite file, which `sessionspec serve` reads
 
 | Key | Default | Rule |
 | --- | --- | --- |
-| `path` | required | The SQLite file, not empty. A relative path is read from the working directory. Its directory must exist at start, and the file must open as a session store; either failure is `config:value` naming `interaction_records.path`, never the path. |
+| `path` | required | The SQLite file, not empty. A relative path is read from the working directory. Its directory must exist at start, and the file must be missing, empty or a session store of the schema version the binary writes; any other is `config:value` naming `interaction_records.path` (and both versions), never the path, and the file is left as it was. Give the binary a file of its own, never the `sessions.db` sessionspec keeps for its transcripts. |
 | `queue` | 1024 | 1 to 65536: finished calls waiting for the writer thread. A call that finds it full is not recorded and is counted in `llmgw_interaction_records_dropped_total`. |
 | `call_bytes` | 8388608 (8 MiB) | 1 to 33554432: the most bytes of request body and answer body together copied of one call. A call over it, or whose answer was not decoded, is not recorded and is counted in `llmgw_interaction_records_skipped_total`; its answer is unchanged. |
-| `sessions_held` | 4096 | 1 to 65536: sessions whose agents the binary remembers, the least recently used forgotten first. A forgotten session's next call opens it again and starts a new agent. |
+| `sessions_held` | 4096 | 1 to 65536: sessions whose agents the binary remembers, the least recently used forgotten first. A forgotten session's next call continues under the same agent id, without the chain state of its earlier turns. |
 
 A value outside its range is `config:value` naming `interaction_records.<key>`; any other key
 is `config:schema`. A refused call is recorded as an incomplete turn; a token count is not
-recorded.
+recorded. A call whose request the lift cannot read (it yields no step) is not recorded and is
+counted in `llmgw_interaction_records_skipped_total`; a call the writer fails to store is counted
+in `llmgw_interaction_records_failed_total` with one warning line. At SIGINT or SIGTERM the
+binary waits at most 2 s for the writer, then names the calls still queued on one line,
+`b10x-llm-gateway: interaction records: <n> calls not stored at stop`, before its unchanged stop
+line.
 
 ## `routes` {#routes}
 

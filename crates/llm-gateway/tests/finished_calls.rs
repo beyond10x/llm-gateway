@@ -998,10 +998,10 @@ fn a_call_at_the_bound_is_copied_and_one_byte_over_it_is_over_bound_with_both_si
     );
 }
 
-// --- The two series ----------------------------------------------------------------------------
+// --- The three series --------------------------------------------------------------------------
 
 #[test]
-fn the_two_interaction_record_series_start_at_zero_and_count_what_the_embedding_counts() {
+fn the_three_interaction_record_series_start_at_zero_and_count_what_the_embedding_counts() {
     let rig = Rig::new(Vec::new(), Options::default());
     let before = rig.scrape();
     assert!(
@@ -1012,9 +1012,16 @@ fn the_two_interaction_record_series_start_at_zero_and_count_what_the_embedding_
         before.contains("\nllmgw_interaction_records_skipped_total 0\n"),
         "{before}"
     );
+    assert!(
+        before.contains("\nllmgw_interaction_records_failed_total 0\n"),
+        "{before}"
+    );
     rig.metrics.count_interaction_record_dropped();
     rig.metrics.count_interaction_record_dropped();
     rig.metrics.count_interaction_record_skipped();
+    for _ in 0..3 {
+        rig.metrics.count_interaction_record_failed();
+    }
     let after = rig.scrape();
     assert!(
         after.contains("\nllmgw_interaction_records_dropped_total 2\n"),
@@ -1024,6 +1031,10 @@ fn the_two_interaction_record_series_start_at_zero_and_count_what_the_embedding_
         after.contains("\nllmgw_interaction_records_skipped_total 1\n"),
         "{after}"
     );
+    assert!(
+        after.contains("\nllmgw_interaction_records_failed_total 3\n"),
+        "{after}"
+    );
     let order = |text: &str, name: &str| text.find(&format!("# HELP {name} ")).unwrap();
     assert!(
         order(&after, "llmgw_pod_start_spend_refusals_total")
@@ -1031,6 +1042,8 @@ fn the_two_interaction_record_series_start_at_zero_and_count_what_the_embedding_
             && order(&after, "llmgw_interaction_records_dropped_total")
                 < order(&after, "llmgw_interaction_records_skipped_total")
             && order(&after, "llmgw_interaction_records_skipped_total")
+                < order(&after, "llmgw_interaction_records_failed_total")
+            && order(&after, "llmgw_interaction_records_failed_total")
                 < order(&after, "llmgw_route_requests_total"),
         "{after}"
     );

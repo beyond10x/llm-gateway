@@ -23,6 +23,9 @@ domain: llm-gateway.deployment
 #   2026-11-26: a document may name port 0 and a reader learns the port from this line);
 #   `b10x-llm-gateway: listening on <address>` once the gateway is bound and marked ready;
 #   `b10x-llm-gateway: refused <code>: <message>` when startup is refused (exit status 1);
+#   `b10x-llm-gateway: interaction records: <n> calls not stored at stop` once, before the
+#   stop line, when the writer of `[interaction_records]` has not stored every queued call 2 s
+#   after the gateway stopped (added 2026-11-26, story:interaction-record-store);
 #   `b10x-llm-gateway: stopped by <SIGINT|SIGTERM> accepted=<n> completed=<n>` after a graceful
 #   stop (exit status 0). A command-line error is clap's (exit status 2).
 # The gateway is bound with `GatewayConfig::new`'s bounds: an 8192-byte head, 64 concurrent
@@ -945,13 +948,29 @@ types:
   #                    not lifted and is counted in `llmgw_interaction_records_skipped_total`
   #   `sessions_held`  1..=65536, default 4096: the sessions whose agents the lift remembers,
   #                    the least recently used forgotten first; a forgotten session's next call
-  #                    opens it again and starts a new agent
+  #                    continues under the same agent id, without the chain state of its earlier
+  #                    turns
   # Any other key is `config:schema`; a value outside its rule `config:value` naming
   # `interaction_records.<key>`. The lift runs on the connection's thread and never waits: the
   # append goes to one writer thread behind the queue. A refused call is lifted as an incomplete
   # turn (`refused`); a count-tokens call hands no finished call and makes no record. No message
   # text is stored: prompts and tool inputs are a digest and a byte count. Without the table the
   # relay copies no byte, no writer thread runs and no file is created.
+  # DECIDED 2026-11-26 (story:interaction-record-store, correction 1; D94, D95, D96):
+  #   D94  before the writer opens `path`, the binary reads the file's schema version
+  #        (sessionspec's `meta` table). A file that holds another version than
+  #        `sessionspec_records::store::SCHEMA_VERSION`, or is no session store, refuses the start
+  #        with `config:value` naming `interaction_records.path` and both versions, never the
+  #        path, and is left as it was (sessionspec's own open would empty it). A missing or
+  #        empty file is a new store.
+  #   D95  a finished call whose lift yields no step (a request the lift cannot read) is counted
+  #        in `llmgw_interaction_records_skipped_total` and not queued.
+  #   D96  at SIGINT or SIGTERM, after the gateway has stopped, the binary waits at most 2 s for
+  #        the writer to store its queue, then names the calls still queued on one line before
+  #        the stop line, which is unchanged.
+  #   A call the writer fails to store is counted in `llmgw_interaction_records_failed_total`
+  #   (read from the writer's own failure count) with one warning line naming the series, never
+  #   the path.
   # BOUNDARY: the records are sessionspec's domain `sessionspec.session`, written by its crate
   # `sessionspec-records` (`wire::lift_call`, `append::Appender`), which `b10x-llm-gateway-cli`
   # links by git tag. ESS has no cross-system relation, so this is a comment, not a reference.

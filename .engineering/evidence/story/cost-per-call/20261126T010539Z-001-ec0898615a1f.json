@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-26T01:05:39Z",
+  "actor": "human:operator",
+  "artifact": "story:cost-per-call",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "local gate on wave/2026-11-25-w03 at f277e016 (Rust 1.98.0, each step alone with its own exit status, compile and test jobs on the pool's build node, ess 0.99.2 on PATH, pin 0.99.4): cargo test --workspace --locked --no-fail-fast 1338 passed, 0 failed, 1 ignored, 133 test binaries; cargo fmt --all --check; clippy --workspace --all-targets --all-features -D warnings; docs generate --check; ess specify validate 8 files valid; spec-diff passed (8 acknowledged); conformance 430 of 430 in each of three runs; aep plan artifact validate valid; each exit 0",
+    "reference": "wave/2026-11-25-w03@f277e016"
+  }
+}

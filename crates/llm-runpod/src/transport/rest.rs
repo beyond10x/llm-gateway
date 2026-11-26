@@ -23,9 +23,11 @@
 //!   later one leaves the listing partial. Each entry is a v2 `Pod`: `id`, `name`, `status`,
 //!   `env` and `gpu.id`. The listing applies only its `filters` parameter, which matches tags,
 //!   so none is sent.
-//! * `create_pod`: `POST /pods` with v2's body: v1's keys, but `image` for `imageName` and one
-//!   GPU type as `gpu: {id, count}`. A 2xx is `Created`; a 4xx whose answer says Runpod has no
-//!   instance available is `NoCapacity`, any other 4xx `Refused`. No answer, a 5xx or a timeout
+//! * `create_pod`: `POST /pods` with v2's `CreatePodRequest`: `name`, `image`, one GPU type as
+//!   `gpu: {id, count}`, `cloud`, `disk`, `ports`, `env`, `entrypoint`, `dataCenterIds` and a
+//!   network volume as `mounts.network`; v2 refuses any other key (422). A 2xx is `Created`; a
+//!   4xx whose answer says Runpod has no instance available is `NoCapacity` (v2 answers capacity
+//!   with 400 and only a human-readable `detail`), any other 4xx `Refused`. No answer, a 5xx or a timeout
 //!   may have created the pod: one listing resolves it by its name and request tag, as
 //!   connectors' `unknown` is resolved; otherwise it is `Lost`. A create is never sent twice.
 //! * `terminate_pod`: `DELETE /pods/<id>`. A 2xx is `Terminated`, a 4xx `Refused`, anything
@@ -56,7 +58,7 @@ use std::{
 use serde_json::{Map, Value, json};
 
 use super::{
-    connectors::{create_body, started_at_ms},
+    connectors::started_at_ms,
     probe::{self, BearerKey, PodTls, Request},
 };
 use crate::{
@@ -653,18 +655,43 @@ fn no_capacity(body: &[u8]) -> bool {
         .contains(NO_CAPACITY)
 }
 
-/// Runpod v2's `POST /pods` body: [`create_body`]'s keys, with `image` for `imageName` and the
-/// one GPU type as `gpu: {id, count}` for `gpuTypeIds` and `gpuCount`.
+/// Where a network volume is mounted when the request names none: Runpod v1's default
+/// `volumeMountPath`, which v2's `NetworkMount` no longer supplies.
+const DEFAULT_MOUNT_PATH: &str = "/workspace";
+
+/// Runpod v2's `POST /pods` body, its `CreatePodRequest`, which refuses any key it does not
+/// declare: `name`, `image`, the one GPU type as `gpu: {id, count}`, `cloud`, the container disk
+/// as `disk`, `ports`, `env`, the vLLM argv as `entrypoint` (the image's CMD is left as it is),
+/// `dataCenterIds` when any is pinned, and a network volume as `mounts.network`. v2 has no
+/// `interruptible`: every pod it creates is on demand. No pod volume is asked for.
 fn create_body_v2(request: &PodRequest) -> Map<String, Value> {
-    let mut body = create_body(request);
-    for v1 in ["imageName", "gpuTypeIds", "gpuCount"] {
-        body.remove(v1);
-    }
+    let mut body = Map::new();
+    body.insert("name".to_owned(), json!(request.name));
     body.insert("image".to_owned(), json!(request.image));
     body.insert(
         "gpu".to_owned(),
         json!({ "id": request.gpu_type, "count": request.gpu_count }),
     );
+    body.insert("cloud".to_owned(), json!(request.cloud_type.as_str()));
+    body.insert("disk".to_owned(), json!(request.container_disk_gb));
+    body.insert("ports".to_owned(), json!(request.ports));
+    body.insert("env".to_owned(), json!(request.env));
+    if !request.docker_entrypoint.is_empty() {
+        body.insert("entrypoint".to_owned(), json!(request.docker_entrypoint));
+    }
+    if !request.data_center_ids.is_empty() {
+        body.insert("dataCenterIds".to_owned(), json!(request.data_center_ids));
+    }
+    if let Some(volume) = &request.network_volume_id {
+        let path = request
+            .volume_mount_path
+            .as_deref()
+            .unwrap_or(DEFAULT_MOUNT_PATH);
+        body.insert(
+            "mounts".to_owned(),
+            json!({ "network": [{ "volumeId": volume, "path": path }] }),
+        );
+    }
     body
 }
 

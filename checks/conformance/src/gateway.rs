@@ -519,10 +519,11 @@ mod relay {
     use super::{Observed, label, token_code, unavailable, verifier_code};
     use ess_conformance::target::TargetError;
     use llm_gateway::{
-        BasePath, CallerReview, CallerToken, CredentialHeader, CredentialHeaderError, Disposition,
-        Gateway, GatewayConfig, GatewayHandle, IngressAuth, NoOwnerVerifier, OwnerToken,
-        OwnerVerifier, Principal, ReasoningEffort, Relay, RelayError, RelayModel, RelayStream,
-        RelayTarget, RelayTargets, Review, RouteInventory, SharedSecretVerifier, StaticHeader,
+        AnswerBytes, BasePath, CallBytes, CallEnding, CallerReview, CallerToken, CredentialHeader,
+        CredentialHeaderError, Disposition, FinishedCall, FinishedCalls, Gateway, GatewayConfig,
+        GatewayHandle, Harness, IngressAuth, NoOwnerVerifier, OwnerToken, OwnerVerifier,
+        Principal, ReasoningEffort, Relay, RelayError, RelayModel, RelayStream, RelayTarget,
+        RelayTargets, Review, RouteInventory, SharedSecretVerifier, StaticHeader,
         StaticHeaderError, TargetBearer, TargetRefusal, ToolCalling, UsageRecord, UsageRecords,
         Wire,
     };
@@ -623,6 +624,9 @@ mod relay {
         /// emulator, in place of [`Source`] (story:a-call-starts-no-pod).
         #[serde(default)]
         runpod: Option<RunpodInput>,
+        /// The relay copies each call's bytes within this bound (`Relay::with_call_bytes`).
+        #[serde(default)]
+        call_bytes: Option<usize>,
     }
 
     /// A deployment document whose models the binary's pool serves over `EmulatedRunpod`, and
@@ -1469,14 +1473,28 @@ mod relay {
             .position(|window| window == needle)
     }
 
-    /// Keeps every usage record the gateway hands out (rows O1, O2).
+    /// Keeps every usage record the gateway hands out (rows O1, O2), and every finished call
+    /// with its copy (story:finished-call-facts).
     #[derive(Default)]
-    struct Records(Mutex<Vec<UsageRecord>>);
+    struct Records {
+        usage: Mutex<Vec<UsageRecord>>,
+        finished: Mutex<Vec<(FinishedCall, Option<CallBytes>)>>,
+        /// Each fixture pod's name and authority, for the `finished` fact's `upstream`.
+        pods: Vec<(String, String)>,
+    }
 
     impl UsageRecords for Records {
         fn record(&self, record: &UsageRecord) {
-            if let Ok(mut records) = self.0.lock() {
+            if let Ok(mut records) = self.usage.lock() {
                 records.push(record.clone());
+            }
+        }
+    }
+
+    impl FinishedCalls for Records {
+        fn finished(&self, call: &FinishedCall, bytes: Option<&CallBytes>) {
+            if let Ok(mut finished) = self.finished.lock() {
+                finished.push((call.clone(), bytes.cloned()));
             }
         }
     }
@@ -1484,11 +1502,89 @@ mod relay {
     impl Records {
         /// The records made since the last call.
         fn take(&self) -> Vec<UsageRecord> {
-            self.0
+            self.usage
                 .lock()
                 .map(|mut records| std::mem::take(&mut *records))
                 .unwrap_or_default()
         }
+
+        /// The finished calls handed out since the last call.
+        fn take_finished(&self) -> Vec<(FinishedCall, Option<CallBytes>)> {
+            self.finished
+                .lock()
+                .map(|mut finished| std::mem::take(&mut *finished))
+                .unwrap_or_default()
+        }
+    }
+
+    /// One finished call as the `finished` fact writes it. `recorded` holds the call id of every
+    /// usage record of the run so far, `pods` each fixture pod's name and authority, and `run`
+    /// how long the run has taken.
+    fn finished_fact(
+        (call, bytes): &(FinishedCall, Option<CallBytes>),
+        recorded: &[String],
+        pods: &[(String, String)],
+        run: Duration,
+    ) -> String {
+        let within = |value: u64| u128::from(value) <= run.as_millis();
+        let timed = |value: Option<u64>| match value {
+            None => "absent".to_owned(),
+            Some(value) if within(value) => "bounded".to_owned(),
+            Some(value) => value.to_string(),
+        };
+        let upstream = call.upstream.as_deref().map_or("absent", |authority| {
+            pods.iter()
+                .find(|(_, pod)| pod == authority)
+                .map_or("unknown", |(name, _)| name.as_str())
+        });
+        let (ending, refusal) = match call.ending {
+            CallEnding::Complete => ("Complete", None),
+            CallEnding::ClientDisconnected => ("ClientDisconnected", None),
+            CallEnding::UpstreamCut => ("UpstreamCut", None),
+            CallEnding::WireError => ("WireError", None),
+            CallEnding::Refused(code) => ("Refused", Some(code.wire())),
+        };
+        let harness = match call.harness {
+            Harness::ClaudeCode => "ClaudeCode",
+            Harness::Codex => "Codex",
+            Harness::Other => "Other",
+        };
+        let span = match call.finished_ms.checked_sub(call.started_ms) {
+            Some(span) if within(span) => "bounded".to_owned(),
+            _ => format!("{}..{}", call.started_ms, call.finished_ms),
+        };
+        let bytes = match bytes {
+            None => "none".to_owned(),
+            Some(CallBytes::Copied { request, answer }) => {
+                let answer = match answer {
+                    None => "absent".to_owned(),
+                    Some(AnswerBytes::Body(body)) => format!("body:{}", body.len()),
+                    Some(AnswerBytes::Events(events)) => format!("events:{}", events.len()),
+                };
+                format!("copied request={} answer={answer}", request.len())
+            }
+            Some(CallBytes::OverBound {
+                request_bytes,
+                answer_bytes,
+            }) => format!("over-bound request={request_bytes} answer={answer_bytes}"),
+        };
+        format!(
+            "call={} path={} wire={} route={} upstream={upstream} attempts={} queue_wait_ms={} ttft_ms={} ending={ending} refusal={} cost_usd={} session={} harness={harness} span={span} bytes={bytes}",
+            if recorded.contains(&call.call_id) {
+                "recorded"
+            } else {
+                "unknown"
+            },
+            call.path,
+            call.wire.label(),
+            call.route.as_deref().unwrap_or("absent"),
+            call.attempts,
+            timed(call.queue_wait_ms),
+            timed(call.ttft_ms),
+            refusal.unwrap_or("absent"),
+            call.declared_cost_usd.as_deref().unwrap_or("absent"),
+            call.session_hash,
+        )
     }
 
     /// One record as the `records` fact writes it; `elapsed` is how long the client took from
@@ -2143,7 +2239,12 @@ mod relay {
         *counting = Some(Arc::clone(&targets));
         let relay = Relay::new(models, targets)
             .map_err(relay_error)?
-            .with_records(records);
+            .with_records(Arc::clone(&records) as Arc<dyn UsageRecords>)
+            .with_finished_calls(records);
+        let relay = match program.call_bytes {
+            Some(bound) => relay.with_call_bytes(bound),
+            None => relay,
+        };
         // The binary's translator, on a fixed clock so a translated answer's bytes are exact.
         let relay = match program.translation.as_deref() {
             None | Some("off") => relay,
@@ -2568,7 +2669,7 @@ mod relay {
             "headers": [], "retry_after": [], "arrivals": [], "upstream": [], "acquired": 0, "invalidated": [],
             "released": 0, "authorizations": [], "secret_upstream": false, "records": [],
             "scrapes": [], "connections": [], "received_heads": [], "upstream_ends": [],
-            "lifecycle_asks": [], "pod_creates": 0, "calls": []
+            "lifecycle_asks": [], "pod_creates": 0, "calls": [], "finished": []
         });
         if program_json.len() > MAX_PROGRAM_BYTES {
             return facts;
@@ -2619,7 +2720,14 @@ mod relay {
                 return facts;
             }
         };
-        let records = Arc::new(Records::default());
+        let records = Arc::new(Records {
+            pods: source
+                .pods
+                .iter()
+                .map(|(name, authority, _)| (name.clone(), authority.clone()))
+                .collect(),
+            ..Records::default()
+        });
         let root = certificates
             .as_ref()
             .map(|certificates| certificates.root.as_slice());
@@ -2878,6 +2986,7 @@ mod relay {
         let (mut results, mut bodies, mut headers, mut retry_after, mut arrivals) =
             (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
         let (mut recorded, mut scrapes, mut scrape_number) = (Vec::new(), Vec::new(), 0);
+        let (mut call_ids, mut finished) = (Vec::new(), Vec::new());
         // Per step, the body its answer carried, before any seal in it was redacted.
         let mut answered: Vec<Option<String>> = Vec::new();
         let mut calls = Calls::default();
@@ -2941,12 +3050,16 @@ mod relay {
             // A record is made before the gateway closes the connection, so every record of
             // this request is kept by the time its answer has been read to the end.
             let elapsed = started.elapsed();
+            let made = records.take();
+            call_ids.extend(made.iter().map(|record| record.call.clone()));
             recorded.extend(
-                records
-                    .take()
-                    .iter()
+                made.iter()
                     .map(|record| record_fact(record, elapsed) + &cost_fact(record)),
             );
+            // A finished call is handed out after its record, before the connection is closed.
+            finished.extend(records.take_finished().iter().map(|value| {
+                finished_fact(value, &call_ids, &records.pods, run_started.elapsed())
+            }));
             let Some(received) = received else {
                 results.push("no-response".to_owned());
                 continue;
@@ -2976,6 +3089,7 @@ mod relay {
         facts["records"] = json!(recorded);
         facts["scrapes"] = json!(scrapes);
         facts["calls"] = json!(calls.fact);
+        facts["finished"] = json!(finished);
         handle
     }
 

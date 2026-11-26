@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.telemetry.CallEnding",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:099155ee008e9ca2babda61bb66667596ea82614da84a6c9ee9d35f45aa9f9b3",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.telemetry.CallEnding": {
+      "title": "CallEnding",
+      "x-ess-name": "llm-gateway.telemetry.CallEnding",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Complete",
+        "ClientDisconnected",
+        "UpstreamCut",
+        "WireError",
+        "Refused"
+      ]
+    }
+  }
+}

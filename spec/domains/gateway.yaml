@@ -1209,6 +1209,19 @@ entities:
       # `<call>`, and a CallRecord's `duration_ms` as `"<bounded>"` when it is at most the time
       # the run has taken (story:call-id-and-usage-record).
       - {name: calls, type: 'List<String>'}
+      # One entry per llm-gateway.telemetry.FinishedCall the relay's FinishedCalls port received,
+      # in order (story:finished-call-facts), as `call=<recorded|unknown> path=<path>
+      # wire=<wire> route=<alias|absent> upstream=<pod|absent> attempts=<n>
+      # queue_wait_ms=<check> ttft_ms=<check> ending=<CallEnding> refusal=<code|absent>
+      # cost_usd=<amount|absent> session=<hash> harness=<Harness> span=<check> bytes=<copy>`.
+      # `call` is `recorded` when a UsageRecord of the run carries the value's call id;
+      # `upstream` names the fixture pod at the value's authority; `queue_wait_ms` and `ttft_ms`
+      # are `bounded` when present and at most the time the run has taken, `absent` otherwise;
+      # `span` is `bounded` when `finished_ms - started_ms` is at most that time, and the two
+      # values otherwise. `bytes` is `none` when the port was handed no CallBytes,
+      # `copied request=<n> answer=<absent|body:<n>|events:<k>>` for `Copied` (`<n>` bytes,
+      # `<k>` events) and `over-bound request=<n> answer=<n>` for `OverBound`.
+      - {name: finished, type: 'List<String>'}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
 commands:
   # A request outside the relay, in the order the gateway decides (docs/gateway.md, "The HTTP
@@ -1411,6 +1424,10 @@ commands:
       #           loopback port, as `GatewayHandle::serve_metrics`, taking `bearer` as its scrape
       #           token when given and open without it; one it cannot bind composes nothing,
       #           `error_code` `bind:metrics-listen`
+      #   call_bytes  optional, a llm-gateway.telemetry.CallBytesBound: the relay is composed
+      #           `with_call_bytes(call_bytes)`, so its FinishedCalls port is handed a CallBytes
+      #           with each finished call; without it the port is handed none. The run's port
+      #           keeps every value it is handed (the `finished` fact) and counts nothing
       #   steps  in order: `{step: mark_ready}`, `{step: scrape}` (a `GET /metrics`, with
       #           optional `credential`, default true: the owner's bearer token; `authorization`,
       #           sent as that header's value in place of it; `method` and `path` in place of

@@ -16,6 +16,7 @@ use crate::{
         BasePathError, CredentialHeaderError, RefusalCode, RelayError, StaticHeaderError,
         TargetRefusal, TokenError,
     },
+    finished::{FinishedCalls, NoFinishedCalls},
     inventory::Label,
     metrics::{CallPricing, Metrics, NoRecords, UsageRecord, UsageRecords},
     review::{CallerReview, CallerToken, Review},
@@ -1230,6 +1231,10 @@ pub struct Relay {
     /// Who reviews a caller under `IngressAuth::ServiceAccountToken`; without one every caller
     /// but the owner is `credential-review-unavailable`.
     caller_review: Option<Arc<dyn CallerReview>>,
+    /// Where each finished call's value goes (story:finished-call-facts).
+    finished: Arc<dyn FinishedCalls>,
+    /// The bound of a call's byte copy; `None`, the default, copies nothing.
+    call_bytes: Option<usize>,
 }
 
 impl Relay {
@@ -1261,6 +1266,8 @@ impl Relay {
             newest: Mutex::default(),
             decoder: None,
             caller_review: None,
+            finished: Arc::new(NoFinishedCalls),
+            call_bytes: None,
         };
         relay.register();
         Ok(relay)
@@ -1354,6 +1361,23 @@ impl Relay {
     #[must_use]
     pub fn with_records(mut self, records: Arc<dyn UsageRecords>) -> Self {
         self.records = records;
+        self
+    }
+
+    /// Hands every call that was given a call id, but a count-tokens call, to `finished` once, as
+    /// a [`crate::FinishedCall`] (story:finished-call-facts).
+    #[must_use]
+    pub fn with_finished_calls(mut self, finished: Arc<dyn FinishedCalls>) -> Self {
+        self.finished = finished;
+        self
+    }
+
+    /// Hands each finished call's request and answer bytes beside its value, as a
+    /// [`crate::CallBytes`]: `Copied` while the request body and the answer body together are at
+    /// most `bound` bytes, `OverBound` with both sizes past it. Without it no byte is copied.
+    #[must_use]
+    pub fn with_call_bytes(mut self, bound: usize) -> Self {
+        self.call_bytes = Some(bound);
         self
     }
 

@@ -67,6 +67,8 @@
       "llm-gateway.gateway/authored/cost-a-token-price-written-as-a-number-composes-nothing",
       "llm-gateway.gateway/authored/cost-an-unknown-token-price-key-composes-nothing",
       "llm-gateway.gateway/authored/cost-the-call-record-names-a-priced-calls-cost-and-an-unpriced-calls-none",
+      "llm-gateway.gateway/authored/finished-calls-a-declared-bound-copies-a-call-within-it-and-names-the-sizes-of-one-over-it",
+      "llm-gateway.gateway/authored/finished-calls-each-call-with-an-id-hands-one-value-and-a-count-and-an-unauthenticated-call-none",
       "llm-gateway.gateway/authored/head-inspection-answers-without-a-body",
       "llm-gateway.gateway/authored/hosted-a-base-path-that-could-leave-its-prefix-composes-nothing",
       "llm-gateway.gateway/authored/hosted-a-base-url-path-replaces-the-v1-prefix-of-every-wire-path",
@@ -649,6 +651,16 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/cost-the-call-record-names-a-priced-calls-cost-and-an-unpriced-calls-none"
       },
+      "gateway/scenarios/finished-calls-a-declared-bound-copies-a-call-within-it-and-names-the-sizes-of-one-over-it.yaml": {
+        "digest": "sha256:042d4cfb974a7c6aa47b7cbeae5e1a88dbb4a65e47ac38f6f6351e89347fa2f6",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/finished-calls-a-declared-bound-copies-a-call-within-it-and-names-the-sizes-of-one-over-it"
+      },
+      "gateway/scenarios/finished-calls-each-call-with-an-id-hands-one-value-and-a-count-and-an-unauthenticated-call-none.yaml": {
+        "digest": "sha256:dba2c62653d7517bca3eb0e206de6040ea7523a2c073d9030236c6e5d0c0895e",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/finished-calls-each-call-with-an-id-hands-one-value-and-a-count-and-an-unauthenticated-call-none"
+      },
       "gateway/scenarios/gateway-a-header-name-followed-by-whitespace-is-malformed.yaml": {
         "digest": "sha256:7b9b260a007aa5475525e43d9defa53b20c041e838905a43d60a66fc0fec5aac",
         "disposition": "accepted",
@@ -810,32 +822,32 @@
         "scenario": "llm-gateway.gateway/authored/liveness-is-served-without-a-credential-and-readiness-starts-unready"
       },
       "gateway/scenarios/metrics-each-model-call-feeds-one-outcome-and-the-duration-histogram-of-its-model.yaml": {
-        "digest": "sha256:88f339cb60d219399080bca231e83bb734b4366974479a5edc5da77d0b004934",
+        "digest": "sha256:f1268359feb702f725f206e1612fccdd5ed979af626e2bdc83541928ed1fcb7d",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/metrics-each-model-call-feeds-one-outcome-and-the-duration-histogram-of-its-model"
       },
       "gateway/scenarios/metrics-listener-serves-get-and-head-on-exactly-metrics-and-nothing-else.yaml": {
-        "digest": "sha256:41e0a17983307849b64fd45d1374108f099c96ed96afdd497d895fc152053180",
+        "digest": "sha256:4fdd70ed40d4118236cfcd399783555346f9a705cedf76a9b4501556f734ad0c",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/metrics-listener-serves-get-and-head-on-exactly-metrics-and-nothing-else"
       },
       "gateway/scenarios/metrics-listener-with-a-scrape-token-takes-it-and-decides-the-path-first.yaml": {
-        "digest": "sha256:b8ea0f966433cb7b531fca86658358bfd7515bb12980c426be382b4ae35c540b",
+        "digest": "sha256:58e78547e91d4d737749a77391ef05feaf7ff2feeb3737cc419fe2fc699eb01e",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/metrics-listener-with-a-scrape-token-takes-it-and-decides-the-path-first"
       },
       "gateway/scenarios/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series.yaml": {
-        "digest": "sha256:cad0cd017ca27c2ac954f6622ba7802350d71e87965cde2a5593d96195d45936",
+        "digest": "sha256:5ee15ff18fdb3f221ca12c4daf99073fc78962b47fa0ed930b084de5dcb71328",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series"
       },
       "gateway/scenarios/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route.yaml": {
-        "digest": "sha256:c8f6a4fc0d76494e29340c26dc9a32c12efceb6a90618b91db1e87b0b8e1de3b",
+        "digest": "sha256:526899d6c202299c335541c65e2f751680adf09405dc4c4acbe940c35929da26",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route"
       },
       "gateway/scenarios/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure.yaml": {
-        "digest": "sha256:c90abf1d84770dcb7abd933655225f890889d82f6f4ef66c7a0eb800f2a022c9",
+        "digest": "sha256:ecc9187d96184493ba507f87109a92b2b2d425dd4892afb0441442c382184a07",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure"
       },
@@ -895,7 +907,7 @@
         "scenario": "llm-gateway.gateway/authored/r1-codex-is-profiled-for-a-native-route-and-a-route-its-turn-translates-to"
       },
       "gateway/scenarios/r1-each-served-setup-instructions-answer-counts-one-instruction-view.yaml": {
-        "digest": "sha256:3b47e9d344999d47731f03537b9b1bc93f9e0547b8880bb1cd6bf2b8e7983758",
+        "digest": "sha256:eb34b40cffc6db3f6ea4d9c092a3a3382a1a102fc72255112c802169c62e767e",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/r1-each-served-setup-instructions-answer-counts-one-instruction-view"
       },
@@ -915,7 +927,7 @@
         "scenario": "llm-gateway.gateway/authored/r1-r5-before-readiness-the-public-routes-are-unavailable-and-take-no-body"
       },
       "gateway/scenarios/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero.yaml": {
-        "digest": "sha256:4d904fc276923e58afe66f4c9609c9b90ac0f635adae9e20c9b00a5aa3d280d8",
+        "digest": "sha256:a93d00969da75023b6300b95e1c6b6e8b452636e8e208f193c78ff298adc7173",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero"
       },
@@ -2021,7 +2033,7 @@
       }
     },
     "counts": {
-      "authored": 336,
+      "authored": 338,
       "generated": 94,
       "outside": 0,
       "refused": 0
@@ -2136,9 +2148,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "e06373c699fc4f980e7525519a5042e9d387510b68e8aa543c1d906bce396fee",
+    "contract_digest": "c4a72517c60cac446d8a11603bf3c8d8595ee9d59ec0559cbffd16ed67db9fa7",
     "scenario_initial_state": "empty",
-    "spec_digest": "87ddacf2fdc67b7660f6d2656ccb53b2675922e059a1fd54df9b1b0ee3709107",
+    "spec_digest": "7ccb44c758aa9ca91d4f85bbd45f4b27f8b9fb7e5955e046a35b8a04e3c3a550",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -8373,6 +8385,210 @@
         }
       ]
     },
+    "llm-gateway.gateway/authored/finished-calls-a-declared-bound-copies-a-call-within-it-and-names-the-sizes-of-one-over-it": {
+      "purpose": "within a bound of 100 bytes a call's request and answer are copied, a stream as its events and a refusal without an answer; a call past the bound is handed both sizes",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"call_bytes\":100,\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"a\\\"}\"]},{\"status\":200,\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"chunks\":[\"data: {\\\"a\\\":1}\\n\\n\",\"data: {\\\"b\\\":2}\\n\\n\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"a\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"stream\\\":true}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"nobody\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\",\"pad_to_bytes\":120}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "finished": {
+                "kind": "literal",
+                "value": [
+                  "call=recorded path=/v1/chat/completions wire=chat route=code upstream=pod-1 attempts=1 queue_wait_ms=bounded ttft_ms=bounded ending=Complete refusal=absent cost_usd=absent session=287f169e87d4 harness=Other span=bounded bytes=copied request=16 answer=body:10",
+                  "call=recorded path=/v1/messages wire=messages route=code upstream=pod-1 attempts=1 queue_wait_ms=bounded ttft_ms=bounded ending=Complete refusal=absent cost_usd=absent session=287f169e87d4 harness=Other span=bounded bytes=copied request=30 answer=events:2",
+                  "call=recorded path=/v1/chat/completions wire=chat route=absent upstream=absent attempts=0 queue_wait_ms=absent ttft_ms=absent ending=Refused refusal=model-unknown cost_usd=absent session=287f169e87d4 harness=Other span=bounded bytes=copied request=18 answer=absent",
+                  "call=recorded path=/v1/chat/completions wire=chat route=code upstream=pod-1 attempts=1 queue_wait_ms=bounded ttft_ms=bounded ending=Complete refusal=absent cost_usd=absent session=287f169e87d4 harness=Other span=bounded bytes=over-bound request=120 answer=10"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed",
+                  "404 model-unknown",
+                  "200 relayed"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/finished-calls-each-call-with-an-id-hands-one-value-and-a-count-and-an-unauthenticated-call-none": {
+      "purpose": "a relayed and a refused call each hand the port one value naming their record's id, session hash and ending; a token count and an unauthenticated call hand none",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"a\\\"}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"input_tokens\\\":3}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\",\"headers\":[\"x-claude-code-session-id: s-claude\"]},{\"step\":\"request\",\"path\":\"/v1/messages/count_tokens\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"nobody\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\",\"credential\":false}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "finished": {
+                "kind": "literal",
+                "value": [
+                  "call=recorded path=/v1/chat/completions wire=chat route=code upstream=pod-1 attempts=1 queue_wait_ms=bounded ttft_ms=bounded ending=Complete refusal=absent cost_usd=absent session=e5333c6d3823 harness=ClaudeCode span=bounded bytes=none",
+                  "call=recorded path=/v1/chat/completions wire=chat route=absent upstream=absent attempts=0 queue_wait_ms=absent ttft_ms=absent ending=Refused refusal=model-unknown cost_usd=absent session=287f169e87d4 harness=Other span=bounded bytes=none"
+                ]
+              },
+              "records": {
+                "kind": "literal",
+                "value": [
+                  "model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=10 duration_ms=bounded tokens=absent",
+                  "model=code wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=18 duration_ms=bounded tokens=absent",
+                  "model=absent wire=chat disposition=Refused refusal=model-unknown status=404 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed",
+                  "404 model-unknown",
+                  "401 credential-absent"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
     "llm-gateway.gateway/authored/head-inspection-answers-without-a-body": {
       "purpose": "HEAD is served like GET and writes no body; a query string is discarded",
       "source": [
@@ -11395,6 +11611,8 @@
                   "1 llmgw_endpoint_invalidations_total 1",
                   "1 llmgw_cold_start_wait_seconds_total bounded",
                   "1 llmgw_pod_start_spend_refusals_total 0",
+                  "1 llmgw_interaction_records_dropped_total 0",
+                  "1 llmgw_interaction_records_skipped_total 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 3",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"responses\"} 1",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"messages\"} 1",
@@ -11628,6 +11846,8 @@
                   "1 llmgw_endpoint_invalidations_total 0",
                   "1 llmgw_cold_start_wait_seconds_total bounded",
                   "1 llmgw_pod_start_spend_refusals_total 0",
+                  "1 llmgw_interaction_records_dropped_total 0",
+                  "1 llmgw_interaction_records_skipped_total 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"messages\"} 0",
                   "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",
@@ -11787,6 +12007,8 @@
                   "4 llmgw_endpoint_invalidations_total 0",
                   "4 llmgw_cold_start_wait_seconds_total bounded",
                   "4 llmgw_pod_start_spend_refusals_total 0",
+                  "4 llmgw_interaction_records_dropped_total 0",
+                  "4 llmgw_interaction_records_skipped_total 0",
                   "4 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 0",
                   "4 llmgw_route_requests_total{model=\"code\",wire=\"messages\"} 0",
                   "4 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",
@@ -11949,6 +12171,8 @@
                   "1 llmgw_endpoint_invalidations_total 0",
                   "1 llmgw_cold_start_wait_seconds_total bounded",
                   "1 llmgw_pod_start_spend_refusals_total 0",
+                  "1 llmgw_interaction_records_dropped_total 0",
+                  "1 llmgw_interaction_records_skipped_total 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"responses\"} 0",
                   "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",
@@ -11989,6 +12213,8 @@
                   "2 llmgw_endpoint_invalidations_total 1",
                   "2 llmgw_cold_start_wait_seconds_total bounded",
                   "2 llmgw_pod_start_spend_refusals_total 0",
+                  "2 llmgw_interaction_records_dropped_total 0",
+                  "2 llmgw_interaction_records_skipped_total 0",
                   "2 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 2",
                   "2 llmgw_route_requests_total{model=\"code\",wire=\"responses\"} 1",
                   "2 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 1",
@@ -12225,6 +12451,8 @@
                   "1 llmgw_endpoint_invalidations_total 0",
                   "1 llmgw_cold_start_wait_seconds_total bounded",
                   "1 llmgw_pod_start_spend_refusals_total 0",
+                  "1 llmgw_interaction_records_dropped_total 0",
+                  "1 llmgw_interaction_records_skipped_total 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 2",
                   "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 1",
                   "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 0",
@@ -12456,6 +12684,8 @@
                   "1 llmgw_endpoint_invalidations_total 2",
                   "1 llmgw_cold_start_wait_seconds_total bounded",
                   "1 llmgw_pod_start_spend_refusals_total 0",
+                  "1 llmgw_interaction_records_dropped_total 0",
+                  "1 llmgw_interaction_records_skipped_total 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 3",
                   "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 1",
                   "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 2",
@@ -13913,6 +14143,8 @@
                   "1 llmgw_endpoint_invalidations_total 0",
                   "1 llmgw_cold_start_wait_seconds_total bounded",
                   "1 llmgw_pod_start_spend_refusals_total 0",
+                  "1 llmgw_interaction_records_dropped_total 0",
+                  "1 llmgw_interaction_records_skipped_total 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 0",
                   "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",
                   "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 0",
@@ -14369,6 +14601,8 @@
                   "3 llmgw_endpoint_invalidations_total 0",
                   "3 llmgw_cold_start_wait_seconds_total bounded",
                   "3 llmgw_pod_start_spend_refusals_total 0",
+                  "3 llmgw_interaction_records_dropped_total 0",
+                  "3 llmgw_interaction_records_skipped_total 0",
                   "3 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 0",
                   "3 llmgw_route_requests_total{model=\"code\",wire=\"messages\"} 0",
                   "3 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",

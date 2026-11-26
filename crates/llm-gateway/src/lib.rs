@@ -48,6 +48,7 @@ mod body;
 mod calls;
 mod dashboard;
 mod error;
+mod finished;
 mod guide;
 mod inventory;
 mod json;
@@ -71,6 +72,7 @@ pub use error::{
     BasePathError, CredentialHeaderError, InventoryError, LabelError, PrincipalError, RefusalCode,
     RelayError, StaticHeaderError, TargetRefusal, TokenError, VerifierError,
 };
+pub use finished::{AnswerBytes, CallBytes, CallEnding, FinishedCall, FinishedCalls, Harness};
 pub use inventory::{
     AuthKind, BillingKind, Label, RouteInventory, RouteSummary, TargetLimits, TargetProvenance,
     TargetSummary,

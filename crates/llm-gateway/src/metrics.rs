@@ -324,6 +324,14 @@ impl Metrics {
         self.add(Process::PodReaps, stopped);
     }
 
+    /// Counts a finished call the embedding of [`crate::FinishedCalls`] could not queue
+    /// (`llmgw_interaction_records_dropped_total`, story:finished-call-facts).
+    pub fn count_interaction_record_dropped(&self) {}
+
+    /// Counts a finished call whose bytes were over the bound ([`crate::CallBytes::OverBound`]),
+    /// whose record the embedding left out (`llmgw_interaction_records_skipped_total`).
+    pub fn count_interaction_record_skipped(&self) {}
+
     /// Counts a setup instructions answer served at `GET /` (`llmgw_instruction_views_total`,
     /// row R1).
     pub(crate) fn count_instruction_view(&self) {

@@ -29,10 +29,10 @@ const OWNER: &str = "owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const WAIT: Duration = Duration::from_secs(10);
 const PROMETHEUS: &str = "text/plain; version=0.0.4; charset=utf-8";
 
-/// llmgw's 13 series and the gateway's own spend-refusal series, in the order
-/// llm-gateway.telemetry lists them: nine process-wide, then
-/// five per model and wire.
-const PROCESS_SERIES: [&str; 9] = [
+/// llmgw's 13 series, the gateway's own spend-refusal series and its two interaction-record
+/// series (story:finished-call-facts), in the order llm-gateway.telemetry lists them: eleven
+/// process-wide, then five per model and wire.
+const PROCESS_SERIES: [&str; 11] = [
     "llmgw_inference_requests_total",
     "llmgw_upstream_failures_total",
     "llmgw_instruction_views_total",
@@ -42,6 +42,8 @@ const PROCESS_SERIES: [&str; 9] = [
     "llmgw_endpoint_invalidations_total",
     "llmgw_cold_start_wait_seconds_total",
     "llmgw_pod_start_spend_refusals_total",
+    "llmgw_interaction_records_dropped_total",
+    "llmgw_interaction_records_skipped_total",
 ];
 const ROUTE_SERIES: [&str; 5] = [
     "llmgw_route_requests_total",
@@ -422,6 +424,24 @@ fn r4_metrics_takes_the_owner_credential_and_readiness_like_inspection() {
     );
     // A scrape is not a model call: it makes no record.
     assert!(unready.records().is_empty());
+}
+
+/// The series table of docs/gateway.md "Counters and usage records" names each process-wide
+/// and per-route series, in the order the scrape serves them.
+#[test]
+fn r4_the_published_series_table_names_every_process_and_route_series_in_order() {
+    let contract = include_str!("../../../docs/gateway.md");
+    let published: Vec<&str> = contract
+        .lines()
+        .filter_map(|line| line.strip_prefix("| `llmgw_"))
+        .filter_map(|rest| rest.split_once('`').map(|(name, _)| name))
+        .collect();
+    let served: Vec<String> = PROCESS_SERIES
+        .iter()
+        .chain(ROUTE_SERIES.iter())
+        .map(|name| name.trim_start_matches("llmgw_").to_owned())
+        .collect();
+    assert_eq!(&published[..served.len()], served.as_slice());
 }
 
 #[test]

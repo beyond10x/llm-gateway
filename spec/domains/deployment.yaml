@@ -1027,8 +1027,17 @@ types:
   #   D98  at most one failure warning per second, naming how many calls failed since the last
   #        warning and the series; the series counts each call. When the writer's side is
   #        dropped, a last read warns the failures no warning or stop line named.
-  # BOUNDARY: the records are sessionspec's domain `sessionspec.session`, written by its crate
-  # `sessionspec-records` (`wire::lift_call`, `append::Appender`), which `b10x-llm-gateway-cli`
+  # Amended 2026-11-26 (agentspec 0.2.0, sessionspec renamed; store schema 5):
+  #   D94  agentspec's open migrates a store of an earlier schema version: it drops and fills
+  #        again the tables it derives, keeps the wire rows, and refuses, changing nothing, wire
+  #        rows in a format it cannot read. The check lets through a schema row that reads, as
+  #        agentspec writes a version, `SCHEMA_VERSION` or an earlier version from 1 (a store of
+  #        schema 4 an earlier gateway wrote is migrated at start), and refuses a later version
+  #        or any other row with both versions, as before. Elsewhere above, sessionspec reads
+  #        agentspec, `sessionspec_records` reads `agentspec_records` and `sessionspec serve`
+  #        reads `agentspec serve`.
+  # BOUNDARY: the records are agentspec's domain `agentspec.session`, written by its crate
+  # `agentspec-records` (`wire::lift_call`, `append::Appender`), which `b10x-llm-gateway-cli`
   # links by git tag. ESS has no cross-system relation, so this is a comment, not a reference.
   # Proved by the `interaction_records` module of crates/llm-gateway-cli/tests/main.rs.
   - name: llm-gateway.deployment.InteractionRecordsDeclaration

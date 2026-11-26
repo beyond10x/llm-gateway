@@ -548,8 +548,8 @@ fn refused_start(config: &Path) -> (bool, String) {
 }
 
 /// D94: a SQLite file that is no session store (another program's, here a table `notes` with
-/// one row) refuses the start by name and is left as it was; sessionspec's own open would have
-/// emptied it.
+/// one row) refuses the start by name and is left as it was; agentspec's own open would have
+/// dropped every table named like one it derives and added its own.
 #[test]
 fn a_file_that_is_no_session_store_is_refused_at_start_and_kept() {
     let fixture = Fixture::new("records-no-store");
@@ -578,8 +578,8 @@ fn a_file_that_is_no_session_store_is_refused_at_start_and_kept() {
     assert_eq!(kept, 1);
 }
 
-/// A file sessionspec's open began and did not finish (its `meta` table without a schema row,
-/// no other table) is a new store: sessionspec's open completes it and loses nothing.
+/// A file agentspec's open began and did not finish (its `meta` table without a schema row,
+/// no other table) is a new store: agentspec's open completes it and loses nothing.
 #[test]
 fn a_file_with_only_agentspecs_meta_table_and_no_schema_row_is_a_new_store() {
     let fixture = Fixture::new("records-meta-only");

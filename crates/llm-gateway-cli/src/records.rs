@@ -52,8 +52,9 @@ const WARNING_EVERY: Duration = Duration::from_secs(1);
 ///
 /// # Errors
 /// `config:value` naming `interaction_records.path`, never the path itself, when its directory
-/// does not exist, the file is no session store, holds another schema version or is held
-/// locked by another process, or it does not open.
+/// does not exist, the file is no session store, holds a later schema version (or a schema row
+/// agentspec does not write) or is held locked by another process, or it does not open; an
+/// earlier schema version is migrated by agentspec's open.
 pub(crate) fn compose(
     relay: Relay,
     config: Option<&InteractionRecordsConfig>,
@@ -120,11 +121,13 @@ fn path_refusal(rule: &str) -> Refusal {
     )
 }
 
-/// D94: refuses a file at `path` that sessionspec's open would empty: one that is no session
-/// store, or whose schema row is not the string of [`SCHEMA_VERSION`], compared as sessionspec
-/// compares it. A missing or empty file is a new store, and so is a file whose only object is
-/// sessionspec's `meta` table without a schema row (an open that did not finish its setup). A
-/// store another process holds locked is refused for that. Only reads.
+/// D94: refuses a file at `path` that agentspec's open would change without migrating it: one
+/// that is no session store, or whose schema row is not a version agentspec migrates or writes
+/// ([`migrates`]). A missing or empty file is a new store, and so is a file whose only object is
+/// agentspec's `meta` table without a schema row (an open that did not finish its setup). A
+/// store of an earlier version is let through: agentspec's open fills its derived tables again
+/// and keeps its wire rows. A store another process holds locked is refused for that. Only
+/// reads.
 fn check_store(path: &Path) -> Result<(), Refusal> {
     match std::fs::metadata(path) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -160,16 +163,24 @@ fn check_store(path: &Path) -> Result<(), Refusal> {
             .optional()
             .map_err(|error| read_refusal(&error))?
     };
-    let ours = SCHEMA_VERSION.to_string();
     match row {
         None if others == 0 => Ok(()),
         None => Err(path_refusal("is no session store")),
-        Some(row) if row == ours => Ok(()),
+        Some(row) if migrates(&row) => Ok(()),
         Some(row) => Err(path_refusal(&format!(
-            "holds schema version {}; this gateway writes schema version {ours}",
+            "holds schema version {}; this gateway writes schema version {SCHEMA_VERSION} and \
+             migrates only an earlier one",
             shown(&row)
         ))),
     }
+}
+
+/// Whether a schema row names [`SCHEMA_VERSION`] or an earlier version from 1, written as
+/// agentspec writes a version (`4`, never `04` or `+4`): agentspec's open keeps such a store or
+/// migrates it, keeping its wire rows.
+fn migrates(row: &str) -> bool {
+    row.parse::<i64>()
+        .is_ok_and(|version| version.to_string() == row && (1..=SCHEMA_VERSION).contains(&version))
 }
 
 /// The refusal for an error reading the file: a busy or locked store is held by another
@@ -440,7 +451,7 @@ fn microdollars(usd: &str) -> Option<i64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Held, microdollars, start};
+    use super::{Held, SCHEMA_VERSION, microdollars, migrates, start};
     use llm_gateway::Metrics;
     use std::{
         collections::{BTreeMap, HashMap},
@@ -471,6 +482,19 @@ mod tests {
         assert!(!Arc::ptr_eq(&b, &held.session("b")), "b was forgotten");
         assert_eq!(held.sessions.len(), 2);
         assert_eq!(held.by_use.len(), 2);
+    }
+
+    #[test]
+    fn only_this_schema_version_or_an_earlier_one_written_as_agentspec_writes_it_is_opened() {
+        assert_eq!(SCHEMA_VERSION, 5);
+        for row in ["1", "2", "3", "4", "5"] {
+            assert!(migrates(row), "{row}");
+        }
+        for row in [
+            "0", "-1", "6", "9", "04", "+4", " 4", "4 ", "4.0", "", "four",
+        ] {
+            assert!(!migrates(row), "{row:?}");
+        }
     }
 
     #[test]

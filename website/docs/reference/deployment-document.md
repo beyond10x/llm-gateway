@@ -36,6 +36,7 @@ keyring, and a local gateway names it by an OS keychain entry or a file of its o
 | `routes` | no | The path of an llm `llm.routes/1` document whose routes are served beside the tables below ([`routes`](#routes)). A relative path is read from the working directory. |
 | `[models.<alias>]` | at least one model, here, in `hosted` or in `routes` | The models Runpod pods serve, under the same naming rule. |
 | `[hosted.<alias>]` | at least one model, here, in `models` or in `routes` | The models hosted endpoints serve, under the same naming rule; no alias may be in both tables. |
+| `[aliases.<alias>]` | no | Second names of `[models.<alias>]` models, each served by its model's pod with thinking off ([`[aliases.<alias>]`](#aliases)), under the same naming rule; no alias may be in another table. |
 | `[watchdog]` | no | The heartbeat `serve` writes and the limits `b10x-llm-gateway watchdog` enforces ([`[watchdog]`](#watchdog)). Absent: no heartbeat, and `watchdog` refuses to start. |
 | `[interaction_records]` | no | The SQLite file every finished model call is appended to as session records ([`[interaction_records]`](#interaction-records)). Absent: no byte of a call is copied, no writer thread runs and no file is created. |
 
@@ -313,6 +314,41 @@ tool_calling = "parsed"
 model_prefix = "claude-"
 ```
 
+## `[aliases.<alias>]` {#aliases}
+
+A second name of a `[models.<alias>]` model whose Messages requests reach the pod with thinking
+off. Claude Code sends an effort on every Messages request, `high` unless told otherwise and
+never `none`, and the pinned vLLM turns the Qwen3.8 template's thinking on for every effort it
+receives; so a model that should answer structured steps without thinking first gets a second
+name instead of a second pod.
+
+| Key | Default | Rule |
+| --- | --- | --- |
+| `model` | required | The alias of a `[models.<alias>]` model whose `wires` include `messages`. A hosted model, another alias, a name nothing declares or a model without the `messages` wire is `config:value` naming `aliases.<alias>.model`. |
+| `effort` | required | `none`, the only value. Any other is `config:value` naming `aliases.<alias>.effort`. |
+
+A missing key, any other key or a value that is not a string is `config:schema`. The alias
+follows the provider-name rule and is not also a `[models.*]` or `[hosted.*]` alias
+(`config:value` naming `aliases.<alias>`).
+
+The alias is relayed as its model: the same wires, tool calling, windows, token price and
+`start_on_request`, and sent to the pod under the model's alias. It has no pod of its own: a
+call to it, its wake and its status take the model's pod, so a call to either name starts or
+waits on the one pod, and a pod start is counted once. The watchdog counts a call to the alias
+as activity of the model's pod, and `/v1/routes/<alias>` lists the model's targets. A model
+without the `messages` wire would have the alias's Messages requests translated, and a
+translated request carries no forced effort, so such an alias is refused. On the Messages wire
+every request to it reaches the pod with each `output_config.effort` set to `null` and
+`chat_template_kwargs` holding `"enable_thinking":false`, whatever effort or
+`chat_template_kwargs` it sent; the model's own name is relayed exactly as without the alias.
+Chat and Responses requests to the alias are relayed as to the model.
+
+```toml
+[aliases.qwen-plain]
+model = "qwen"
+effort = "none"
+```
+
 ## `token_price` {#token-prices}
 
 `[models.<alias>.token_price]` and `[hosted.<alias>.token_price]` (every kind) declare what the
@@ -473,7 +509,7 @@ A changed routes document takes a restart.
 | The key file or keychain entry is read once at start, as a hosted model's `credential_file` or `credential` is. | `endpoint-credential:<rule>`, its message starting `routes.<endpoint>.auth.secret:` and naming the rule, never the path |
 | `base_url` names the endpoint's API path, such as `https://api.anthropic.com/v1`: llm appends the wire path to it, and the gateway replaces the wire path's leading `/v1` with it, and the two agree only when the URL has a path. A URL without a path, a path outside the base-path rule of [`[hosted.<alias>]`](#hosted-models), or a credential over `http` to a host that is not loopback is refused. | `config:value` naming `routes.<endpoint>.base_url` |
 | An `api-key` endpoint's `auth.header` is one a hosted model's `credential_header` may be, and on a `messages` endpoint it is not `anthropic-version` (in any case), the header every request to such an endpoint is sent. | `config:value` naming `routes.<endpoint>.auth.header` |
-| A route name is not also a `[models.<alias>]` or `[hosted.<alias>]` alias. | `config:value` naming `routes.<route>` |
+| A route name is not also a `[models.<alias>]`, `[hosted.<alias>]` or `[aliases.<alias>]` alias. | `config:value` naming `routes.<route>` |
 | A route name is at most 246 bytes, though llm admits 256: its inventory target id `<route>.<wire>` must fit the gateway's 256-byte label, and `responses` is the longest wire. | `config:value` naming `routes.` and the name's first 32 bytes, and the bound |
 
 An endpoint whose key is `secret: "env:ANTHROPIC_API_KEY"`:

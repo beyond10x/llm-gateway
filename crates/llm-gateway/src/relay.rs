@@ -922,9 +922,38 @@ impl ReasoningEffort {
     }
 }
 
+/// An effort a model forces on every messages-wire request, whatever the request names
+/// (`llm-gateway.deployment.ForcedEffort`, `docs/gateway.md` "The relay", step 6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ForcedEffort {
+    /// Thinking off: every top-level `output_config.effort` reaches the target as `null` and
+    /// every top-level `chat_template_kwargs` with `"enable_thinking":false`. vLLM v0.27.1's
+    /// messages request takes no literal `"none"` there (`vllm/entrypoints/anthropic/protocol.py`
+    /// line 114).
+    None,
+}
+
+impl ForcedEffort {
+    /// Every forceable effort.
+    pub const ALL: [Self; 1] = [Self::None];
+
+    /// The effort as a document names it: `none`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+        }
+    }
+
+    /// The effort `text` names exactly, if it is one of [`Self::ALL`].
+    pub fn from_name(text: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|effort| effort.as_str() == text)
+    }
+}
+
 /// A model the gateway relays: its alias, the model name its target expects, its wires,
-/// whether it serves tool calls, the two lengths the public routes publish (rows R5, R1), and
-/// the effort a messages request naming none is given.
+/// whether it serves tool calls, the two lengths the public routes publish (rows R5, R1), the
+/// effort a messages request naming none is given, and the effort every messages request is
+/// forced to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelayModel {
     alias: Label,
@@ -934,6 +963,7 @@ pub struct RelayModel {
     max_model_len: Option<u64>,
     context_window: Option<u64>,
     reasoning_effort: Option<ReasoningEffort>,
+    forced_effort: Option<ForcedEffort>,
     translated_only: bool,
     client_credentials: bool,
     model_prefix: Option<String>,
@@ -989,6 +1019,7 @@ impl RelayModel {
             max_model_len: None,
             context_window: None,
             reasoning_effort: None,
+            forced_effort: None,
             translated_only: false,
             client_credentials: false,
             model_prefix: None,
@@ -1189,6 +1220,20 @@ impl RelayModel {
 
     pub fn reasoning_effort(&self) -> Option<ReasoningEffort> {
         self.reasoning_effort
+    }
+
+    /// Declares the effort every messages-wire request reaches the target with, whatever it
+    /// names: it wins over the request's own effort, the W4 mapping and
+    /// [`Self::with_reasoning_effort`] (`docs/gateway.md` "The relay", step 6). Undeclared, a
+    /// request keeps its own.
+    #[must_use]
+    pub fn with_forced_effort(mut self, effort: ForcedEffort) -> Self {
+        self.forced_effort = Some(effort);
+        self
+    }
+
+    pub fn forced_effort(&self) -> Option<ForcedEffort> {
+        self.forced_effort
     }
 
     /// Declares whether the model's server parses tool calls.
@@ -2733,7 +2778,7 @@ fn newest_in(list: &[u8], family: &str) -> Option<String> {
 /// The body `model`'s target is sent (step 6), and the model name in it: the `resolved` newest
 /// ID, else the upstream name, or the name as the client sent it when a prefix matched it; on
 /// the messages wire (`messages`), every effort mapped and the model's declared effort inserted
-/// where the body names none.
+/// where the body names none, or the model's forced effort written over whatever it names.
 fn rewrite(
     analysis: &body::Analysis,
     body: &[u8],
@@ -2753,6 +2798,7 @@ fn rewrite(
         upstream_model,
         messages,
         model.reasoning_effort.filter(|_| messages),
+        model.forced_effort.filter(|_| messages),
     );
     (rewritten, upstream_model.to_owned())
 }

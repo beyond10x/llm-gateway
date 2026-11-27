@@ -1,0 +1,44 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: forced-effort-none-turns-thinking-off-whatever-the-messages-request-names
+summary: a forced effort none sends every messages request with effort null and enable_thinking false; other wires and models relay as before
+timeline:
+- at: '2026-11-27T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"plain","upstream_model":"served","wires":["chat","messages"],"reasoning_effort":"low","forced_effort":"none","endpoint":{"pod":"pod-1","scheme":"http","auth_kind":"anonymous"}},{"alias":"think","upstream_model":"served","wires":["messages"],"endpoint":{"pod":"pod-1","scheme":"http","auth_kind":"anonymous"}}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"plain\",\"messages\":[]}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"plain\",\"output_config\":{\"effort\":\"low\"}}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"plain\",\"output_config\":{\"effort\":\"high\"}}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"plain\",\"output_config\":{\"effort\":\"max\"}}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"plain\",\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{}},\"effort\":[\"none\"]}}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"plain\",\"chat_template_kwargs\":{\"reasoning_effort\":\"high\",\"enable_thinking\":true}}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"plain\",\"chat_template_kwargs\":{\"reasoning_effort\":\"medium\"}}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"plain\",\"chat_template_kwargs\":null}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"plain\",\"chat_template_kwargs\":{}}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"plain\",\"messages\":[],\"reasoning_effort\":\"high\"}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"think\",\"output_config\":{\"effort\":\"high\"}}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    upstream:
+    - 'pod-1 POST /v1/messages {"model":"served","messages":[],"chat_template_kwargs":{"enable_thinking":false}}'
+    - 'pod-1 POST /v1/messages {"model":"served","output_config":{"effort":null},"chat_template_kwargs":{"enable_thinking":false}}'
+    - 'pod-1 POST /v1/messages {"model":"served","output_config":{"effort":null},"chat_template_kwargs":{"enable_thinking":false}}'
+    - 'pod-1 POST /v1/messages {"model":"served","output_config":{"effort":null},"chat_template_kwargs":{"enable_thinking":false}}'
+    - 'pod-1 POST /v1/messages {"model":"served","output_config":{"format":{"type":"json_schema","schema":{}},"effort":null},"chat_template_kwargs":{"enable_thinking":false}}'
+    - 'pod-1 POST /v1/messages {"model":"served","chat_template_kwargs":{"reasoning_effort":"xhigh","enable_thinking":false}}'
+    - 'pod-1 POST /v1/messages {"model":"served","chat_template_kwargs":{"reasoning_effort":"medium","enable_thinking":false}}'
+    - 'pod-1 POST /v1/messages {"model":"served","chat_template_kwargs":{"enable_thinking":false}}'
+    - 'pod-1 POST /v1/messages {"model":"served","chat_template_kwargs":{"enable_thinking":false}}'
+    - 'pod-1 POST /v1/chat/completions {"model":"served","messages":[],"reasoning_effort":"high"}'
+    - 'pod-1 POST /v1/messages {"model":"served","output_config":{"effort":"xhigh"}}'

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.deployment.ForcedEffort",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:3eb25e76336aa7e418483b1a3d45a1677b6310add9750a152957d421dbd4e0fa",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.deployment.ForcedEffort": {
+      "title": "ForcedEffort",
+      "x-ess-name": "llm-gateway.deployment.ForcedEffort",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "None"
+      ]
+    }
+  }
+}

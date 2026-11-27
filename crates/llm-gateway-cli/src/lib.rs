@@ -39,9 +39,9 @@ mod watchdog;
 
 pub use assemble::{EventAssembler, MAX_ASSEMBLED_BYTES};
 pub use config::{
-    Bedrock, Deployment, Hosted, HostedKind, InteractionRecordsConfig, LaunchClaude, LaunchCodex,
-    Model, OLLAMA_DEFAULT_BASE_URL, Provider, ProviderKind, StatusProbe, TokenReviewConfig,
-    WatchdogConfig, Wire, load, parse,
+    Alias, Bedrock, Deployment, Hosted, HostedKind, InteractionRecordsConfig, LaunchClaude,
+    LaunchCodex, Model, OLLAMA_DEFAULT_BASE_URL, Provider, ProviderKind, StatusProbe,
+    TokenReviewConfig, WatchdogConfig, Wire, load, parse,
 };
 pub use credential::{
     CredentialFailure, CredentialTarget, MAX_KEY_BYTES, Probe, TargetKind, check_key,

@@ -82,7 +82,10 @@ of step 7 asks only the target step 6 handed out.
   `output_config.effort` and `chat_template_kwargs.reasoning_effort` equal to `high` or `max`
   become `xhigh`, the deepest effort the served Qwen3.8 chat template accepts; `low`, `medium`
   and `xhigh` pass unchanged. A Messages request that names no effort, sent to a hosted model
-  that declares a `reasoning_effort`, gains `output_config.effort` set to it. Every other byte
+  that declares a `reasoning_effort`, gains `output_config.effort` set to it. A Messages
+  request to an [alias](../reference/deployment-document.md#aliases) reaches the pod with
+  thinking off whatever effort it names: `output_config.effort` becomes `null` and
+  `chat_template_kwargs` says `"enable_thinking":false`. Every other byte
   reaches the target unchanged, Claude Code's
   adaptive `thinking` and its structured-output `output_config.format` included: the pinned
   vLLM ignores the first and serves the second as structured output.

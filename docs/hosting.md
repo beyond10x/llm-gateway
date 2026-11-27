@@ -862,7 +862,8 @@ order, and terminates on the first that holds:
 4. `not-ready`: the pod has not answered its vLLM readiness probe for `not_ready_minutes`. The
    watchdog probes only a pod that would otherwise be terminated; a ready answer starts the
    window again.
-5. `idle`: the heartbeat lists the pod's model with no call in flight, and its last call ended
+5. `idle`: the heartbeat lists the pod's model, or an `[aliases.*]` name of it, with no call in
+   flight under the model or any of its aliases, and the last call under any of them ended
    longer ago than the model's `idle_timeout_minutes`, never less than `stale_minutes`, so the
    watchdog does not race the gateway's own idle stop. A model the heartbeat does not list has
    no idle limit here; the gateway's pool still stops it.

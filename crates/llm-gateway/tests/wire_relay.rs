@@ -13,8 +13,8 @@
 
 use crate::upstream::{Reply, Upstream};
 use llm_gateway::{
-    CredentialHeader, CredentialHeaderError, Gateway, GatewayConfig, GatewayHandle, Label,
-    OwnerToken, ReasoningEffort, Relay, RelayError, RelayModel, RelayStream, RelayTarget,
+    CredentialHeader, CredentialHeaderError, ForcedEffort, Gateway, GatewayConfig, GatewayHandle,
+    Label, OwnerToken, ReasoningEffort, Relay, RelayError, RelayModel, RelayStream, RelayTarget,
     RelayTargets, RouteInventory, SharedSecretVerifier, StaticHeader, TargetBearer, TargetRefusal,
     TokenError, ToolCalling, Wire,
 };
@@ -2362,6 +2362,175 @@ fn effort_on_the_chat_and_responses_wires_a_declared_effort_is_not_given() {
         [
             r#"{"model":"served-code","messages":[]}"#,
             r#"{"model":"served-code","input":"hi"}"#
+        ]
+    );
+}
+
+// --- A forced effort `none` (docs/gateway.md "The relay", step 6) ------------------------------
+
+/// `code_model` forcing the effort `none`, and declaring `low`, which it must never give.
+fn plain_model() -> RelayModel {
+    code_model()
+        .with_reasoning_effort(ReasoningEffort::Low)
+        .with_forced_effort(ForcedEffort::None)
+}
+
+/// Whatever effort a messages request names, absent, `low`, `high`, `max`, `none`, any other
+/// value or none at all, it reaches the target with every top-level `output_config.effort`
+/// `null` and every top-level `chat_template_kwargs` saying `"enable_thinking":false`; a client's
+/// `enable_thinking: true` is overridden, its `reasoning_effort` keeps the W4 mapping, and the
+/// declared effort is never inserted.
+#[test]
+fn forced_effort_none_turns_thinking_off_whatever_the_messages_request_names() {
+    let cases = [
+        (
+            r#"{"model":"code","messages":[]}"#,
+            r#"{"model":"served-code","messages":[],"chat_template_kwargs":{"enable_thinking":false}}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":{"effort":"low"}}"#,
+            r#"{"model":"served-code","output_config":{"effort":null},"chat_template_kwargs":{"enable_thinking":false}}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":{"effort":"high"}}"#,
+            r#"{"model":"served-code","output_config":{"effort":null},"chat_template_kwargs":{"enable_thinking":false}}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":{"effort":"max"}}"#,
+            r#"{"model":"served-code","output_config":{"effort":null},"chat_template_kwargs":{"enable_thinking":false}}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":{"effort":"none"}}"#,
+            r#"{"model":"served-code","output_config":{"effort":null},"chat_template_kwargs":{"enable_thinking":false}}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":{"effort":{"a":[1,{"b":2}]},"format":{"type":"json_schema","schema":{}}}}"#,
+            r#"{"model":"served-code","output_config":{"effort":null,"format":{"type":"json_schema","schema":{}}},"chat_template_kwargs":{"enable_thinking":false}}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":{"effort":7},"output_config":{"effort":"xhigh"}}"#,
+            r#"{"model":"served-code","output_config":{"effort":null},"output_config":{"effort":null},"chat_template_kwargs":{"enable_thinking":false}}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":"none"}"#,
+            r#"{"model":"served-code","output_config":"none","chat_template_kwargs":{"enable_thinking":false}}"#,
+        ),
+        (
+            r#"{"model":"code","chat_template_kwargs":{"reasoning_effort":"high","enable_thinking":true}}"#,
+            r#"{"model":"served-code","chat_template_kwargs":{"reasoning_effort":"xhigh","enable_thinking":false}}"#,
+        ),
+        (
+            r#"{"model":"code","chat_template_kwargs":{"enable_thinking":{"x":[true]},"reasoning_effort":"medium"}}"#,
+            r#"{"model":"served-code","chat_template_kwargs":{"enable_thinking":false,"reasoning_effort":"medium"}}"#,
+        ),
+        (
+            r#"{"model":"code","chat_template_kwargs":{"reasoning_effort":"medium"}}"#,
+            r#"{"model":"served-code","chat_template_kwargs":{"reasoning_effort":"medium","enable_thinking":false}}"#,
+        ),
+        (
+            r#"{"model":"code","chat_template_kwargs":{}}"#,
+            r#"{"model":"served-code","chat_template_kwargs":{"enable_thinking":false}}"#,
+        ),
+        (
+            r#"{"model":"code","chat_template_kwargs":null}"#,
+            r#"{"model":"served-code","chat_template_kwargs":{"enable_thinking":false}}"#,
+        ),
+        (
+            r#"{"model":"code","chat_template_kwargs":[{"enable_thinking":true}]}"#,
+            r#"{"model":"served-code","chat_template_kwargs":{"enable_thinking":false}}"#,
+        ),
+        (
+            r#"{"model":"code","chat_template_kwargs":{"enable_thinking":true},"chat_template_kwargs":{"a":1}}"#,
+            r#"{"model":"served-code","chat_template_kwargs":{"enable_thinking":false},"chat_template_kwargs":{"a":1,"enable_thinking":false}}"#,
+        ),
+        (
+            r#"{"model":"code","x":{"chat_template_kwargs":{"enable_thinking":true},"output_config":{"effort":"high"}}}"#,
+            r#"{"model":"served-code","x":{"chat_template_kwargs":{"enable_thinking":true},"output_config":{"effort":"high"}},"chat_template_kwargs":{"enable_thinking":false}}"#,
+        ),
+        (
+            "{ \"model\" : \"code\" , \"chat_template_kwargs\" : { } , \"output_config\" : { \"effort\" : \"high\" } }",
+            "{ \"model\" : \"served-code\" , \"chat_template_kwargs\" : { \"enable_thinking\":false} , \"output_config\" : { \"effort\" : null } }",
+        ),
+    ];
+    let pod = Pod::start(cases.iter().map(|_| ok_json("{}")).collect());
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(vec![plain_model()], &source);
+    for (sent, _) in &cases {
+        let answer = gateway.post_text("/v1/messages", sent);
+        assert_eq!(answer.status, 200, "{sent}: {:?}", answer.code());
+    }
+    let seen: Vec<String> = pod.seen().iter().map(Seen::body_text).collect();
+    let expected: Vec<&str> = cases.iter().map(|(_, rewritten)| *rewritten).collect();
+    assert_eq!(seen, expected);
+}
+
+/// Claude Code's own first turn, effort `max`, reaches the target with that effort `null` and
+/// `"chat_template_kwargs":{"enable_thinking":false}` as its last member, every other byte as
+/// the declared-effort case relays it.
+#[test]
+fn forced_effort_none_claude_codes_turn_reaches_the_target_with_thinking_off() {
+    let request = ClaudeCodeRequest::parse(TOOL_TURN_REQUEST);
+    let named = "\"output_config\": {\"effort\": \"max\"}";
+    assert!(request.body.contains(named), "the fixture names effort max");
+    let pod = Pod::start(vec![ok_json("{}")]);
+    let source = Source::of(&[&pod]);
+    let model = claude_code_model().with_forced_effort(ForcedEffort::None);
+    let gateway = Relayed::start(vec![model], &source);
+    assert_eq!(send(gateway.addr, &request.raw()).status, 200);
+    let expected = request
+        .body
+        .replacen(
+            "\"model\": \"code\"",
+            &format!("\"model\": \"{SERVED_QWEN}\""),
+            1,
+        )
+        .replacen(named, "\"output_config\": {\"effort\": null}", 1)
+        .replacen(
+            "\n  ]\n}\n",
+            "\n  ],\"chat_template_kwargs\":{\"enable_thinking\":false}\n}\n",
+            1,
+        );
+    assert!(expected.contains("\"enable_thinking\":false"));
+    let bodies: Vec<String> = pod.seen().iter().map(Seen::body_text).collect();
+    assert_eq!(bodies, [expected]);
+}
+
+/// The chat and responses wires of a model forcing `none` are relayed as without it, and a
+/// model on the same target that forces nothing keeps the W4 mapping and its declared effort.
+#[test]
+fn forced_effort_none_leaves_other_wires_and_other_models_as_they_were() {
+    let pod = Pod::start((0..4).map(|_| ok_json("{}")).collect());
+    let source = Source::of(&[&pod]);
+    let thinking = RelayModel::new(label("think"), label("served-code"), all_wires())
+        .unwrap()
+        .with_reasoning_effort(ReasoningEffort::Medium);
+    let gateway = Relayed::start(vec![plain_model(), thinking], &source);
+    let sent = [
+        (
+            "/v1/chat/completions",
+            r#"{"model":"code","messages":[],"reasoning_effort":"high"}"#,
+        ),
+        (
+            "/v1/responses",
+            r#"{"model":"code","input":"hi","reasoning":{"effort":"high"}}"#,
+        ),
+        (
+            "/v1/messages",
+            r#"{"model":"think","output_config":{"effort":"high"}}"#,
+        ),
+        ("/v1/messages", r#"{"model":"think","messages":[]}"#),
+    ];
+    for (path, body) in sent {
+        assert_eq!(gateway.post_text(path, body).status, 200, "{path} {body}");
+    }
+    let bodies: Vec<String> = pod.seen().iter().map(Seen::body_text).collect();
+    assert_eq!(
+        bodies,
+        [
+            r#"{"model":"served-code","messages":[],"reasoning_effort":"high"}"#,
+            r#"{"model":"served-code","input":"hi","reasoning":{"effort":"high"}}"#,
+            r#"{"model":"served-code","output_config":{"effort":"xhigh"}}"#,
+            r#"{"model":"served-code","messages":[],"output_config":{"effort":"medium"}}"#,
         ]
     );
 }

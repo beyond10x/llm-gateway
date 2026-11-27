@@ -2,14 +2,15 @@
 format: aep.planning-md/3
 id: story:model-alias-thinking-off
 kind: story
-status: active
+status: implemented
 title: An alias of a Runpod model reaches vLLM with thinking off
 relations:
 - serves: vision:portable-model-inference
-revision: 3
+revision: 4
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-27T13:29:53Z", actor: "human:operator", revision: 2, decided_on: {"recorded":{"test_result":1}}}
 - {from: "proposed", to: "active", at: "2026-11-27T13:29:53Z", actor: "human:operator", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-11-27T13:57:24Z", actor: "human:operator", revision: 4, decided_on: {"recorded":{"test_result":2,"review_outcome":1}}}
 ---
 ## Problem
 

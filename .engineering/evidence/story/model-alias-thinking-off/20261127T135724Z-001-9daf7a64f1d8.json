@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-27T13:57:24Z",
+  "actor": "human:operator",
+  "artifact": "story:model-alias-thinking-off",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "slot --timeout 30m task check exit 0 at 4d2e23e73: Summary [16.431s] 1512 tests run: 1512 passed, 1 skipped; conformance 435/435 on 3 runs",
+    "reference": "adversary red tests df58bdab5 green after the fixes"
+  }
+}

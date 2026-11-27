@@ -367,6 +367,39 @@ types:
   - name: llm-gateway.deployment.HostedReasoningEffort
     kind: enum
     variants: [Low, Medium, Xhigh]
+  # An alias's `effort` (AliasDeclaration): the effort every Messages request to the alias is
+  # forced to, whatever it names. Only `none`, thinking off (llm-gateway.gateway `Relay`, step
+  # 6, "Forced effort").
+  - name: llm-gateway.deployment.ForcedEffort
+    kind: enum
+    variants: [None]
+  # `[aliases.<alias>]`: a second name for a `[models.<alias>]` model, served by that model's
+  # pod, with its own forced effort. DECIDED 2026-11-27: a consumer runs Claude Code against a
+  # Runpod Qwen3.8 model; Claude Code sends `output_config.effort` on every Messages request
+  # (`high` by default, never `none`), so every structured step thought up to its output cap
+  # and answered no JSON. The alias turns thinking off for its requests while the model keeps
+  # it, on one pod. Keys:
+  #   model   required: the alias of a `[models.<alias>]` model. Anything else, a `[hosted.*]`
+  #           model, another `[aliases.*]` entry or a name nothing declares, is `config:value`
+  #           naming `aliases.<alias>.model`
+  #   effort  required, read as a string: `none` (ForcedEffort); any other value is
+  #           `config:value` naming `aliases.<alias>.effort`
+  # The alias follows the provider-name rule and names no `[models.*]` or `[hosted.*]` alias and
+  # no route of the routes document (`config:value` naming `aliases.<alias>` or
+  # `routes.<route>`); a missing key or an unknown one is `config:schema`. The alias is relayed
+  # as a model of its own name: the aliased model's wires, tool calling, `max_model_len`,
+  # `context_window`, `token_price` and `start_on_request`, and its upstream name the aliased
+  # model's alias, the name its pod serves (`--served-model-name`). It has no pod, Runpod
+  # secret, hosting slot or watchdog entry of its own: a call to it, its wake and its status
+  # take the aliased model's pod from the same pool, so a call to either name wakes or holds the
+  # one pod, and a pod start is counted once, under the aliased model. The aliased model is
+  # relayed exactly as without the alias. Proved by `alias_*` in
+  # crates/llm-gateway-cli/tests/config.rs and crates/llm-gateway-cli/tests/relaying.rs.
+  - name: llm-gateway.deployment.AliasDeclaration
+    kind: struct
+    fields:
+      - {name: model, type: String}
+      - {name: effort, type: llm-gateway.deployment.ForcedEffort}
   # How a hosted endpoint's status is read (HostedDeclaration `status_probe`, DECIDED 2026-11-27,
   # story:hosted-status-probe): `models`, the default, is the probe a hosted model always had,
   # `GET <base path>/models` (llm-gateway.gateway LifecycleRoute); `count-tokens` is one `POST
@@ -1021,6 +1054,7 @@ types:
       - {name: providers, type: 'Map<String, llm-gateway.deployment.ProviderDeclaration>'}
       - {name: models, type: 'Map<String, llm-gateway.deployment.ModelDeclaration>'}
       - {name: hosted, type: 'Map<String, llm-gateway.deployment.HostedDeclaration>'}
+      - {name: aliases, type: 'Map<String, llm-gateway.deployment.AliasDeclaration>'}
       - {name: routes, type: 'Optional<String>'}
       - {name: watchdog, type: 'Optional<llm-gateway.deployment.WatchdogDeclaration>'}
       - {name: token_review, type: 'Optional<llm-gateway.deployment.TokenReviewDeclaration>'}

@@ -70,6 +70,7 @@
       "llm-gateway.gateway/authored/finished-calls-a-declared-bound-copies-a-call-within-it-and-names-the-sizes-of-one-over-it",
       "llm-gateway.gateway/authored/finished-calls-a-passed-through-answer-whose-coding-is-not-decoded-is-handed-its-sizes-and-its-coding",
       "llm-gateway.gateway/authored/finished-calls-each-call-with-an-id-hands-one-value-and-a-count-and-an-unauthenticated-call-none",
+      "llm-gateway.gateway/authored/forced-effort-none-turns-thinking-off-whatever-the-messages-request-names",
       "llm-gateway.gateway/authored/head-inspection-answers-without-a-body",
       "llm-gateway.gateway/authored/hosted-a-base-path-that-could-leave-its-prefix-composes-nothing",
       "llm-gateway.gateway/authored/hosted-a-base-url-path-replaces-the-v1-prefix-of-every-wire-path",
@@ -667,6 +668,11 @@
         "digest": "sha256:dba2c62653d7517bca3eb0e206de6040ea7523a2c073d9030236c6e5d0c0895e",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/finished-calls-each-call-with-an-id-hands-one-value-and-a-count-and-an-unauthenticated-call-none"
+      },
+      "gateway/scenarios/forced-effort-none-turns-thinking-off-whatever-the-messages-request-names.yaml": {
+        "digest": "sha256:77bd2145c77660b33fff69becab9e87bb12881ccc395c82011695e4333416f65",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/forced-effort-none-turns-thinking-off-whatever-the-messages-request-names"
       },
       "gateway/scenarios/gateway-a-header-name-followed-by-whitespace-is-malformed.yaml": {
         "digest": "sha256:7b9b260a007aa5475525e43d9defa53b20c041e838905a43d60a66fc0fec5aac",
@@ -2045,7 +2051,7 @@
       }
     },
     "counts": {
-      "authored": 340,
+      "authored": 341,
       "generated": 94,
       "outside": 0,
       "refused": 0
@@ -2160,9 +2166,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "7a074b28268d4b8014a9f23a0815a282e5f88c514aff5cedb031c72b9497d354",
+    "contract_digest": "bc55a2aae98a22fa92974677861c57b374031f5c2a073144ac5dbc4322a58433",
     "scenario_initial_state": "empty",
-    "spec_digest": "be3dca25fff0f494da94bc10f5294cc6840eade68def60c651ae6eab1ac8c4c8",
+    "spec_digest": "d73db8d6d6f97ff9697994c83a549fbc11bd0264d6f2c80518be5c5236f010d2",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -8681,6 +8687,119 @@
                   "200 relayed",
                   "404 model-unknown",
                   "401 credential-absent"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/forced-effort-none-turns-thinking-off-whatever-the-messages-request-names": {
+      "purpose": "a forced effort none sends every messages request with effort null and enable_thinking false; other wires and models relay as before",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"plain\",\"upstream_model\":\"served\",\"wires\":[\"chat\",\"messages\"],\"reasoning_effort\":\"low\",\"forced_effort\":\"none\",\"endpoint\":{\"pod\":\"pod-1\",\"scheme\":\"http\",\"auth_kind\":\"anonymous\"}},{\"alias\":\"think\",\"upstream_model\":\"served\",\"wires\":[\"messages\"],\"endpoint\":{\"pod\":\"pod-1\",\"scheme\":\"http\",\"auth_kind\":\"anonymous\"}}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"plain\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"plain\\\",\\\"output_config\\\":{\\\"effort\\\":\\\"low\\\"}}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"plain\\\",\\\"output_config\\\":{\\\"effort\\\":\\\"high\\\"}}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"plain\\\",\\\"output_config\\\":{\\\"effort\\\":\\\"max\\\"}}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"plain\\\",\\\"output_config\\\":{\\\"format\\\":{\\\"type\\\":\\\"json_schema\\\",\\\"schema\\\":{}},\\\"effort\\\":[\\\"none\\\"]}}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"plain\\\",\\\"chat_template_kwargs\\\":{\\\"reasoning_effort\\\":\\\"high\\\",\\\"enable_thinking\\\":true}}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"plain\\\",\\\"chat_template_kwargs\\\":{\\\"reasoning_effort\\\":\\\"medium\\\"}}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"plain\\\",\\\"chat_template_kwargs\\\":null}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"plain\\\",\\\"chat_template_kwargs\\\":{}}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"plain\\\",\\\"messages\\\":[],\\\"reasoning_effort\\\":\\\"high\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"think\\\",\\\"output_config\\\":{\\\"effort\\\":\\\"high\\\"}}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"model\":\"served\",\"messages\":[],\"chat_template_kwargs\":{\"enable_thinking\":false}}",
+                  "pod-1 POST /v1/messages {\"model\":\"served\",\"output_config\":{\"effort\":null},\"chat_template_kwargs\":{\"enable_thinking\":false}}",
+                  "pod-1 POST /v1/messages {\"model\":\"served\",\"output_config\":{\"effort\":null},\"chat_template_kwargs\":{\"enable_thinking\":false}}",
+                  "pod-1 POST /v1/messages {\"model\":\"served\",\"output_config\":{\"effort\":null},\"chat_template_kwargs\":{\"enable_thinking\":false}}",
+                  "pod-1 POST /v1/messages {\"model\":\"served\",\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{}},\"effort\":null},\"chat_template_kwargs\":{\"enable_thinking\":false}}",
+                  "pod-1 POST /v1/messages {\"model\":\"served\",\"chat_template_kwargs\":{\"reasoning_effort\":\"xhigh\",\"enable_thinking\":false}}",
+                  "pod-1 POST /v1/messages {\"model\":\"served\",\"chat_template_kwargs\":{\"reasoning_effort\":\"medium\",\"enable_thinking\":false}}",
+                  "pod-1 POST /v1/messages {\"model\":\"served\",\"chat_template_kwargs\":{\"enable_thinking\":false}}",
+                  "pod-1 POST /v1/messages {\"model\":\"served\",\"chat_template_kwargs\":{\"enable_thinking\":false}}",
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served\",\"messages\":[],\"reasoning_effort\":\"high\"}",
+                  "pod-1 POST /v1/messages {\"model\":\"served\",\"output_config\":{\"effort\":\"xhigh\"}}"
                 ]
               },
               "valid_program": {

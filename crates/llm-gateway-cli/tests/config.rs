@@ -10,7 +10,8 @@
 use crate::support;
 
 use llm_gateway::{
-    AuthKind, BillingKind, CredentialHeader, IngressAuth, ReasoningEffort, ToolCalling,
+    AuthKind, BillingKind, CredentialHeader, ForcedEffort, IngressAuth, ReasoningEffort,
+    ToolCalling,
 };
 use llm_gateway_cli::{
     HostedKind, OLLAMA_DEFAULT_BASE_URL, TokenPrice, Wire, load, parse, vllm_keys,
@@ -2935,5 +2936,124 @@ fn ollama_a_credential_another_auth_kind_or_a_bedrock_key_is_refused_naming_the_
     assert_eq!(
         load(&fixture.config(&text)).unwrap_err().code(),
         "config:schema"
+    );
+}
+
+// --- `[aliases.<alias>]`: a second name of a Runpod model with a forced effort ----------------
+
+/// The support document with `[aliases.<alias>]` holding `lines` appended.
+fn with_alias(fixture: &Fixture, alias: &str, lines: &str) -> String {
+    format!("{}\n[aliases.{alias}]\n{lines}", base(fixture))
+}
+
+/// An alias of a `[models.*]` model with `effort = "none"` loads as that model's second name;
+/// it declares no model of its own, and a document without the table has no alias.
+#[test]
+fn alias_of_a_runpod_model_with_effort_none_loads_and_declares_no_second_model() {
+    let fixture = Fixture::new("alias-loads");
+    let without = load(&fixture.config(&base(&fixture))).unwrap();
+    assert!(without.aliases.is_empty());
+    let text = with_alias(
+        &fixture,
+        "small-plain",
+        "model = \"small\"\neffort = \"none\"\n",
+    );
+    let deployment = load(&fixture.config(&text)).unwrap();
+    assert_eq!(
+        deployment.aliases.get("small-plain"),
+        Some(&llm_gateway_cli::Alias {
+            model: "small".to_owned(),
+            effort: ForcedEffort::None,
+        })
+    );
+    assert_eq!(deployment.models.keys().collect::<Vec<_>>(), ["small"]);
+    assert_eq!(deployment.models["small"], without.models["small"]);
+    assert!(deployment.hosted.is_empty());
+}
+
+/// Every rule of `[aliases.<alias>]`: `model` names a `[models.*]` model, never a hosted model,
+/// another alias or nothing, and `effort` is `none` (`config:value` naming the key); the alias
+/// is a provider-style name no other table holds (`config:value` naming `aliases.<alias>`); a
+/// missing key, an unknown key or a mistyped value is `config:schema`.
+#[test]
+fn alias_refuses_an_unknown_model_an_alias_of_an_alias_and_any_effort_but_none() {
+    let fixture = Fixture::new("alias-refusals");
+    let refused = |text: &str| load(&fixture.config(text)).unwrap_err();
+    let value = |text: &str, key: &str| {
+        let refusal = refused(text);
+        assert_eq!(refusal.code(), "config:value", "{key}: {refusal}");
+        assert!(refusal.to_string().contains(key), "{key}: {refusal}");
+    };
+    let hosted = hosted_table(
+        "remote",
+        "http://127.0.0.1:9",
+        "auth_kind = \"anonymous\"\n",
+    );
+    for model in ["nothing", "remote", "small-plain", "Small", ""] {
+        let text = format!(
+            "{}\n{hosted}\n[aliases.small-plain]\nmodel = \"small\"\neffort = \"none\"\n\n\
+             [aliases.other]\nmodel = \"{model}\"\neffort = \"none\"\n",
+            base(&fixture)
+        );
+        value(&text, "aliases.other.model");
+    }
+    for effort in [
+        "low", "medium", "high", "xhigh", "max", "", "None", " none", "off",
+    ] {
+        let text = with_alias(
+            &fixture,
+            "small-plain",
+            &format!("model = \"small\"\neffort = \"{effort}\"\n"),
+        );
+        value(&text, "aliases.small-plain.effort");
+    }
+    let text = format!(
+        "{}\n{hosted}\n[aliases.remote]\nmodel = \"small\"\neffort = \"none\"\n",
+        base(&fixture)
+    );
+    value(&text, "aliases.remote");
+    value(
+        &with_alias(&fixture, "small", "model = \"small\"\neffort = \"none\"\n"),
+        "aliases.small",
+    );
+    value(
+        &with_alias(
+            &fixture,
+            "\"Small Plain\"",
+            "model = \"small\"\neffort = \"none\"\n",
+        ),
+        "aliases.Small Plain",
+    );
+    for lines in [
+        "model = \"small\"\n",
+        "effort = \"none\"\n",
+        "model = \"small\"\neffort = \"none\"\nreasoning_effort = \"low\"\n",
+        "model = \"small\"\neffort = 0\n",
+        "model = [\"small\"]\neffort = \"none\"\n",
+    ] {
+        let refusal = refused(&with_alias(&fixture, "small-plain", lines));
+        assert_eq!(refusal.code(), "config:schema", "{lines:?}: {refusal}");
+    }
+}
+
+/// A route of the routes document may not take an alias's name.
+#[test]
+fn alias_a_route_named_as_an_alias_is_refused() {
+    let fixture = Fixture::new("alias-route");
+    let text = with_alias(
+        &fixture,
+        "small-plain",
+        "model = \"small\"\neffort = \"none\"\n",
+    );
+    let deployment = load(&fixture.config(&text)).unwrap();
+    let routes = llm_gateway_cli::Routes::parse(
+        "format: llm.routes/1\nendpoints:\n  go: {base_url: https://opencode.ai/inference/go/v1, protocol: messages, auth: {kind: bearer, secret: \"file:/run/secrets/go-key\"}}\nroutes:\n  small-plain: go/glm-5\n",
+    )
+    .unwrap();
+    let refusal = deployment.with_routes(routes).unwrap_err();
+    assert_eq!(refusal.code(), "config:value", "{refusal}");
+    assert!(
+        refusal.to_string().contains("routes.small-plain"),
+        "{refusal}"
     );
 }

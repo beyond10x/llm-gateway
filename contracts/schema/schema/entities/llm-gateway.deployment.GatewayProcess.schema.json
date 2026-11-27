@@ -41,7 +41,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:8cb0b1b5fadc41fae125af48422b68db3c0566b6d4423b5d28efdcb2066009f6",
+    "contract_digest": "slice-sha256/2:1b829e33b263b08da5159289c937d02aa728a4fe41c553149a95bc0096a9bf8a",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -54,6 +54,25 @@
         "Parsed",
         "Absent"
       ]
+    },
+    "llm-gateway.deployment.AliasDeclaration": {
+      "title": "AliasDeclaration",
+      "x-ess-name": "llm-gateway.deployment.AliasDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "effort": {
+          "$ref": "#/$defs/llm-gateway.deployment.ForcedEffort"
+        }
+      },
+      "required": [
+        "model",
+        "effort"
+      ],
+      "additionalProperties": false
     },
     "llm-gateway.deployment.CloudType": {
       "title": "CloudType",
@@ -137,6 +156,13 @@
           },
           "x-ess-map-key": "String"
         },
+        "aliases": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/llm-gateway.deployment.AliasDeclaration"
+          },
+          "x-ess-map-key": "String"
+        },
         "routes": {
           "type": "string"
         },
@@ -158,9 +184,19 @@
         "ingress_auth",
         "providers",
         "models",
-        "hosted"
+        "hosted",
+        "aliases"
       ],
       "additionalProperties": false
+    },
+    "llm-gateway.deployment.ForcedEffort": {
+      "title": "ForcedEffort",
+      "x-ess-name": "llm-gateway.deployment.ForcedEffort",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "None"
+      ]
     },
     "llm-gateway.deployment.GatewayProcess.State": {
       "title": "State",

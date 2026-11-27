@@ -11,8 +11,8 @@ use crate::{
     trusted,
 };
 use llm_gateway::{
-    AuthKind, BillingKind, CredentialHeader, GatewayConfig, IngressAuth, ReasoningEffort,
-    StaticHeader, ToolCalling,
+    AuthKind, BillingKind, CredentialHeader, ForcedEffort, GatewayConfig, IngressAuth,
+    ReasoningEffort, StaticHeader, ToolCalling,
 };
 use llm_runpod::{
     CloudType, ConnectorsBinding, NetworkVolume, ProxyUrl, RunpodProfile, Thinking, VllmSettings,
@@ -75,6 +75,9 @@ struct Document {
     models: BTreeMap<String, ModelDocument>,
     #[serde(default)]
     hosted: BTreeMap<String, HostedDocument>,
+    /// `[aliases.<alias>]`: second names of `models` entries with a forced effort.
+    #[serde(default)]
+    aliases: BTreeMap<String, AliasDocument>,
     /// The `llm.routes/1` document whose routes are served (story:routes-document).
     #[serde(default)]
     routes: Option<PathBuf>,
@@ -93,6 +96,15 @@ struct Document {
     /// (story:interaction-record-store).
     #[serde(default)]
     interaction_records: Option<InteractionRecordsDocument>,
+}
+
+/// `[aliases.<alias>]` (`llm-gateway.deployment.AliasDeclaration`). `effort` is read as a string
+/// and checked as a value, so `low` is `config:value`, as a hosted model's `reasoning_effort` is.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AliasDocument {
+    model: String,
+    effort: String,
 }
 
 /// `[interaction_records]` (`llm-gateway.deployment.InteractionRecordsDeclaration`).
@@ -1150,6 +1162,17 @@ pub struct Bedrock {
     pub token_price: Option<TokenPrice>,
 }
 
+/// `[aliases.<alias>]`, checked (`llm-gateway.deployment.AliasDeclaration`): a second name of a
+/// `[models.<alias>]` model, served by that model's pod, whose every Messages request is
+/// forced to `effort`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Alias {
+    /// The `[models.<alias>]` model whose pod serves the alias.
+    pub model: String,
+    /// The effort every Messages request to the alias is forced to.
+    pub effort: ForcedEffort,
+}
+
 /// A loaded and validated deployment document.
 #[derive(Debug, Clone)]
 pub struct Deployment {
@@ -1169,6 +1192,9 @@ pub struct Deployment {
     /// The models Amazon Bedrock serves, by alias: the `[hosted.*]` entries of
     /// `kind = "bedrock"`. No alias is in two tables.
     pub bedrock: BTreeMap<String, Bedrock>,
+    /// The `[aliases.<alias>]` entries, by alias: second names of `models` entries, each served
+    /// by its model's pod with its own forced effort. No alias is in another table.
+    pub aliases: BTreeMap<String, Alias>,
     /// The routes document `routes` names, as written; only the path is loaded by [`parse`].
     pub routes_file: Option<PathBuf>,
     /// The routes of that document once [`load`] (or [`Deployment::with_routes`]) has read it;
@@ -1210,16 +1236,18 @@ impl Deployment {
     /// The deployment serving `routes` beside its own models.
     ///
     /// # Errors
-    /// `config:value` naming `routes.<route>` for a route name that is a `[models.*]` or
-    /// `[hosted.*]` alias, and naming `models` when no model of any kind is left to serve.
+    /// `config:value` naming `routes.<route>` for a route name that is a `[models.*]`,
+    /// `[hosted.*]` or `[aliases.*]` alias, and naming `models` when no model of any kind is
+    /// left to serve.
     pub fn with_routes(mut self, routes: Routes) -> Result<Self, Refusal> {
         for route in routes.routes() {
             ensure(
                 !self.models.contains_key(route.name())
                     && !self.hosted.contains_key(route.name())
-                    && !self.bedrock.contains_key(route.name()),
+                    && !self.bedrock.contains_key(route.name())
+                    && !self.aliases.contains_key(route.name()),
                 &format!("routes.{}", route.name()),
-                "names an alias [models.*] or [hosted.*] already declares",
+                "names an alias [models.*], [hosted.*] or [aliases.*] already declares",
             )?;
         }
         ensure(
@@ -1338,6 +1366,42 @@ fn hosted_tables(
     Ok((hosted, bedrock))
 }
 
+/// The `[aliases.<alias>]` tables, checked: each a name no other table holds, naming a
+/// `[models.*]` model (never a hosted model, another alias or nothing) and the effort `none`.
+fn alias_tables(
+    declared: BTreeMap<String, AliasDocument>,
+    models: &BTreeMap<String, Model>,
+    (hosted, bedrock): &HostedTables,
+) -> Result<BTreeMap<String, Alias>, Refusal> {
+    let mut aliases = BTreeMap::new();
+    for (alias, declared) in declared {
+        let at = format!("aliases.{alias}");
+        closed_name(&at, &alias)?;
+        ensure(
+            !models.contains_key(&alias)
+                && !hosted.contains_key(&alias)
+                && !bedrock.contains_key(&alias),
+            &at,
+            "names an alias [models.*] or [hosted.*] already declares",
+        )?;
+        ensure(
+            models.contains_key(&declared.model),
+            &format!("{at}.model"),
+            "must name a [models.*] model, not a hosted model or another alias",
+        )?;
+        let effort = ForcedEffort::from_name(&declared.effort)
+            .ok_or_else(|| value(&format!("{at}.effort"), "must be none"))?;
+        aliases.insert(
+            alias,
+            Alias {
+                model: declared.model,
+                effort,
+            },
+        );
+    }
+    Ok(aliases)
+}
+
 /// Loads the closed document from its text, as [`load`] does once the trusted-file reader has
 /// read it. No file the document names is read.
 ///
@@ -1373,7 +1437,9 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         start_on_request_capped(&at, &model, &providers)?;
         models.insert(alias, model);
     }
-    let (hosted, bedrock) = hosted_tables(document.hosted, &models)?;
+    let tables = hosted_tables(document.hosted, &models)?;
+    let aliases = alias_tables(document.aliases, &models, &tables)?;
+    let (hosted, bedrock) = tables;
     let ingress_auth = match document.ingress_auth {
         IngressAuthDocument::Bearer => IngressAuth::Bearer,
         IngressAuthDocument::None => IngressAuth::None,
@@ -1429,6 +1495,7 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         models,
         hosted,
         bedrock,
+        aliases,
         routes_file: document.routes,
         routes: Routes::default(),
         digest,

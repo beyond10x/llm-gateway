@@ -419,7 +419,7 @@ binary's review asks the cluster's TokenReview API; its keys are the deployment 
 of distinct `Wire`s (`relay:no-wire`, `relay:repeated-wire`; two models with one alias are
 `relay:duplicate-model`; an empty name prefix is `relay:empty-prefix`), its `ToolCalling`, `Parsed` or `Absent`, which is `Absent` unless
 `with_tool_calling` says otherwise, an optional `ReasoningEffort` (`with_reasoning_effort`,
-step 6), and the optional `max_model_len` and `context_window` the public routes publish, the
+step 6), an optional `ForcedEffort` (`with_forced_effort`, step 6), and the optional `max_model_len` and `context_window` the public routes publish, the
 first of which declared is its window (`RelayModel::window`, step 7). The embedding implements `RelayTargets` over its pool: `acquire` hands
 out the `RelayTarget` serving an alias, and `invalidate` is told when a request through one
 failed. A `RelayTarget` opens its own connection (`connect`), so the transport, TLS included,
@@ -491,9 +491,30 @@ A request to a wire path is decided in this order:
    template defaults to `xhigh` when a request names no effort, which vLLM v0.27.1 hands it as
    `reasoning_effort` from `output_config.effort` (`vllm/entrypoints/anthropic/serving.py` lines
    513-514); a Runpod pod is already started with its model's `reasoning_effort` as the
-   template's default. Every other byte reaches the target unchanged: llmgw re-serialises the
-   document with sorted keys, llm-gateway replaces those values in place and inserts only that
-   member.
+   template's default. On the messages wire only, a request to a model that forces the effort
+   `none` (`RelayModel::with_forced_effort`, `ForcedEffort::None`; the binary's
+   `[aliases.<alias>]`) reaches the target with thinking off, whatever effort it names: every
+   `effort` member of a top-level `output_config` object becomes `null`, whatever its value;
+   every `enable_thinking` member of a top-level `chat_template_kwargs` object becomes `false`,
+   whatever its value, and such an object without one gains `"enable_thinking":false` as its
+   last member; a top-level `chat_template_kwargs` that is not an object becomes
+   `{"enable_thinking":false}`; a body without one gains
+   `"chat_template_kwargs":{"enable_thinking":false}` as its last top-level member. The forced
+   value wins over both rules above: the model's declared effort is never inserted, and the
+   `high`/`max` mapping still rewrites `chat_template_kwargs.reasoning_effort`, which the
+   template no longer reads. The chat and responses wires are relayed as without it. The
+   literal `"effort":"none"` would fail the turn: vLLM v0.27.1's messages request admits only
+   `low`, `medium`, `high`, `xhigh`, `max` or `null` there
+   (`vllm/entrypoints/anthropic/protocol.py` line 114), and `null` leaves its
+   `reasoning_effort` unset (`serving.py` lines 513-514). A request's own
+   `chat_template_kwargs.enable_thinking` is kept by vLLM whatever the effort
+   (`vllm/entrypoints/openai/chat_completion/protocol.py` lines 571-573) and wins over the
+   server's default chat-template arguments (`vllm/renderers/params.py` lines 111-116), and the
+   Qwen3.8 template reads no effort when `enable_thinking` is false and opens the answer with
+   an empty thinking block (`chat_template.jinja` lines 46-56 and 165-166), so neither a
+   client's `reasoning_effort` nor the server's default turns thinking back on. Every other
+   byte reaches the target unchanged: llmgw re-serialises the document with sorted keys,
+   llm-gateway replaces those values in place and inserts only those members.
 7. `acquire`, which hands out a target or a `TargetRefusal`: `Unavailable` is
    `target-unavailable` (503), and `ColdStart`, the model's target still starting when the
    request's hold budget passed, is `model-cold-start` (503) with `retry-after: 30`, as llmgw's

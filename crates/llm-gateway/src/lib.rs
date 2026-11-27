@@ -84,10 +84,10 @@ pub use inventory::{
 pub use metrics::{CallPricing, Disposition, Metrics, Outcome, UsageRecord, UsageRecords};
 pub use relay::{
     Assembly, BasePath, BodyDecoder, CALLER_SESSION_HEADER, Caller, CredentialHeader,
-    DEFAULT_RETRY_ATTEMPTS, DEFAULT_RETRY_WAIT, Decoded, MAX_ERROR_BODY, ModelKind, ModelPhase,
-    ModelStatus, ReasoningEffort, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
-    StaticHeader, StreamAssembler, TargetBearer, TargetScheme, ToolCalling, UNFORWARDED_HEADERS,
-    Wire, read_within_timeout,
+    DEFAULT_RETRY_ATTEMPTS, DEFAULT_RETRY_WAIT, Decoded, ForcedEffort, MAX_ERROR_BODY, ModelKind,
+    ModelPhase, ModelStatus, ReasoningEffort, Relay, RelayModel, RelayStream, RelayTarget,
+    RelayTargets, StaticHeader, StreamAssembler, TargetBearer, TargetScheme, ToolCalling,
+    UNFORWARDED_HEADERS, Wire, read_within_timeout,
 };
 pub use review::{CallerReview, CallerToken, MAX_PRINCIPAL_BYTES, Principal, Review};
 pub use server::{Gateway, GatewayConfig, GatewayHandle, IngressAuth, ShutdownReport};

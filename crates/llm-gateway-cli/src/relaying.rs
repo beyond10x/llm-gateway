@@ -421,6 +421,7 @@ fn pool_provider(deployment: &Deployment) -> Option<&crate::config::Provider> {
 }
 
 /// What one relayed model needs at acquisition.
+#[derive(Clone)]
 struct Relayed {
     alias: Identifier,
     bearer: Arc<TargetBearer>,
@@ -471,6 +472,13 @@ fn relayed_models(
                 windows: profile_windows(model).collect(),
             },
         );
+    }
+    // An alias acquires, wakes and reads its model's pod: the same pool entry under a second
+    // name, so it starts no pod of its own.
+    for (alias, declared) in &deployment.aliases {
+        if let Some(relayed) = models.get(&declared.model).cloned() {
+            models.insert(alias.clone(), relayed);
+        }
     }
     Ok(models)
 }
@@ -679,7 +687,7 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
             } else {
                 self.pool.ensure_held_running(&relayed.alias, &mut hold)
             };
-            self.count_start(alias, &hold);
+            self.count_start(relayed.alias.as_str(), &hold);
             if let Err(error) = &asked {
                 self.count_failure(alias, *error);
             }
@@ -775,7 +783,7 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
                 if status.phase == ModelPhase::Starting
                     && let Some(deployment) = &status.deployment
                 {
-                    self.count_started(alias, deployment);
+                    self.count_started(relayed.alias.as_str(), deployment);
                 }
                 Ok(gateway_status(&status))
             }
@@ -1472,36 +1480,60 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
         });
     }
     for (alias, model) in &deployment.models {
-        let wires = model.wires.iter().copied().map(relay_wire).collect();
-        // The pod serves the model under its alias (`--served-model-name`), so the upstream
-        // name is the alias too.
-        let relayed = RelayModel::new(relay_label(alias)?, relay_label(alias)?, wires)
-            .map_err(|error| {
-                Refusal::new(
-                    StartupRefusal::ConfigValue,
-                    format!("models.{alias}: {error}"),
-                )
-            })?
-            .with_tool_calling(model.tool_calling)
-            .with_max_model_len(
-                profile_windows(model)
-                    .map(|(_, window)| window)
-                    .min()
-                    .unwrap_or(u64::from(model.vllm.max_model_len)),
-            )
-            .with_context_window(u64::from(model.context_window));
-        let relayed = priced(relayed, model.token_price.as_ref());
-        // The status list says what `acquire` does, from the same decision
-        // (story:a-call-starts-no-pod).
-        models.push(if starts_on_request(deployment, model) {
-            relayed
-        } else {
-            relayed.with_no_call_start()
-        });
+        models.push(runpod_relay_model(deployment, alias, alias, model)?);
+    }
+    // An alias is its model under a second name, sent as that model to that model's pod, with
+    // its forced effort.
+    for (alias, declared) in &deployment.aliases {
+        let Some(model) = deployment.models.get(&declared.model) else {
+            return Err(Refusal::new(
+                StartupRefusal::ConfigValue,
+                format!("aliases.{alias}.model must name a [models.*] model"),
+            ));
+        };
+        models.push(
+            runpod_relay_model(deployment, alias, &declared.model, model)?
+                .with_forced_effort(declared.effort),
+        );
     }
     // Each route of the routes document, on its endpoint's wire (story:routes-document).
     models.extend(deployment.routes.relay_models()?);
     Ok(models)
+}
+
+/// The Runpod model `model` relayed as `alias`, sent to its pod as `served`.
+fn runpod_relay_model(
+    deployment: &Deployment,
+    alias: &str,
+    served: &str,
+    model: &Model,
+) -> Result<RelayModel, Refusal> {
+    let wires = model.wires.iter().copied().map(relay_wire).collect();
+    // The pod serves the model under its alias (`--served-model-name`), so the upstream name is
+    // the model's alias.
+    let relayed = RelayModel::new(relay_label(alias)?, relay_label(served)?, wires)
+        .map_err(|error| {
+            Refusal::new(
+                StartupRefusal::ConfigValue,
+                format!("models.{served}: {error}"),
+            )
+        })?
+        .with_tool_calling(model.tool_calling)
+        .with_max_model_len(
+            profile_windows(model)
+                .map(|(_, window)| window)
+                .min()
+                .unwrap_or(u64::from(model.vllm.max_model_len)),
+        )
+        .with_context_window(u64::from(model.context_window));
+    let relayed = priced(relayed, model.token_price.as_ref());
+    // The status list says what `acquire` does, from the same decision
+    // (story:a-call-starts-no-pod).
+    Ok(if starts_on_request(deployment, model) {
+        relayed
+    } else {
+        relayed.with_no_call_start()
+    })
 }
 
 /// `relayed`, priced by its declared token price (story:cost-per-call).

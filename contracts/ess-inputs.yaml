@@ -239,6 +239,7 @@ scenarios:
 - gateway/scenarios/claude-code-the-startup-probe-head-api-hello-is-refused.yaml
 - gateway/scenarios/hosted-a-declared-effort-reaches-the-endpoint-when-the-request-names-none.yaml
 - gateway/scenarios/hosted-a-declared-effort-never-replaces-a-named-one-or-reaches-another-wire.yaml
+- gateway/scenarios/forced-effort-none-turns-thinking-off-whatever-the-messages-request-names.yaml
 - gateway/scenarios/clamp-a-max-tokens-above-the-room-left-is-lowered-to-it-and-one-at-or-below-is-unchanged.yaml
 - gateway/scenarios/clamp-a-prompt-that-leaves-no-room-for-output-is-context-exceeded-and-not-relayed.yaml
 - gateway/scenarios/clamp-the-window-the-serving-target-states-wins-over-the-models.yaml

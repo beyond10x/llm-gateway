@@ -308,6 +308,8 @@ scenarios:
 - gateway/scenarios/status-a-client-credential-model-is-probed-without-a-credential-and-a-refusal-is-ready.yaml
 - gateway/scenarios/status-the-list-names-every-model-in-alias-order-with-its-kind-wires-status-and-whether-a-call-is-answered.yaml
 - gateway/scenarios/status-the-list-takes-the-owner-credential-and-is-refused-before-any-status-is-asked.yaml
+- gateway/scenarios/limits-the-list-takes-the-owner-credential-and-without-a-ceiling-is-empty.yaml
+- gateway/scenarios/limits-each-ceiling-reads-what-the-spend-check-reads-and-names-the-last-start-it-refused.yaml
 - gateway/scenarios/ollama-status-is-read-from-tags-then-ps-and-names-a-model-ready-not-loaded-not-pulled-or-without-answer.yaml
 - gateway/scenarios/ollama-a-call-to-a-model-not-pulled-is-refused-503-naming-its-alias-and-nothing-is-pulled.yaml
 - gateway/scenarios/ollama-each-declared-wire-is-relayed-to-the-servers-own-path-and-its-tokens-reach-the-usage-record.yaml

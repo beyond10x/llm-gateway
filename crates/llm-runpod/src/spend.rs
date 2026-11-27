@@ -54,6 +54,24 @@ pub struct AccountSpend {
     pub total_micro_usd: u64,
 }
 
+/// One declared ceiling as the spend check counts it at one instant (story:limits-read).
+/// Amounts are micro-USD, instants Unix milliseconds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CeilingReading {
+    pub ceiling: SpendCeiling,
+    pub cap_micro_usd: u64,
+    /// The window the check counts the ceiling over: the current UTC day for the daily one,
+    /// the [`crate::TOTAL_WINDOW_MS`] up to now for the total one.
+    pub window_start_ms: u64,
+    pub window_end_ms: u64,
+    /// What a start's check counts against the ceiling now, before the start's own estimate:
+    /// the larger of the reported spend and the ledger's, plus the running estimate of the
+    /// live pods. `None` when the check cannot count, and refuses every start `Unknown`.
+    pub spent_micro_usd: Option<u64>,
+    /// When the check last refused a start for this ceiling, and the start's model.
+    pub last_refusal: Option<(u64, Identifier)>,
+}
+
 /// Which spend ceiling a start would pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpendCeiling {

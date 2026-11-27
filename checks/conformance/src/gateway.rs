@@ -1924,6 +1924,12 @@ mod relay {
             record(&self.lifecycle_asks, format!("status {alias}"));
             self.inner.status(alias)
         }
+
+        /// The binary's pool's spend ceilings, when it serves the run's models; no lifecycle
+        /// ask (story:limits-read).
+        fn spend_limits(&self) -> Vec<llm_gateway::SpendLimit> {
+            self.inner.spend_limits()
+        }
     }
 
     impl RelayTarget for Counted {

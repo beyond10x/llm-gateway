@@ -1144,6 +1144,11 @@ impl RelayTargets for HostedTargets {
         }
         self.rest.unavailable_reason(alias)
     }
+
+    /// A hosted endpoint has no spend ceiling: every one is `rest`'s (story:limits-read).
+    fn spend_limits(&self) -> Vec<llm_gateway::SpendLimit> {
+        self.rest.spend_limits()
+    }
 }
 
 struct HostedTarget {

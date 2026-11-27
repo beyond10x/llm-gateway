@@ -27,8 +27,8 @@ use llm_provision::{
 };
 
 use crate::{
-    ConfigError, LedgerStore, ProxyUrl, RunpodModel, RunpodProvider, RunpodTransport, SpendPolicy,
-    SpendRefusal, Unserviceable, request::in_namespace,
+    CeilingReading, ConfigError, LedgerStore, ProxyUrl, RunpodModel, RunpodProvider,
+    RunpodTransport, SpendPolicy, SpendRefusal, Unserviceable, request::in_namespace,
 };
 
 /// A trusted Unix-millisecond clock. It must never move backwards.
@@ -819,6 +819,16 @@ impl<T: RunpodTransport> RunpodPool<T> {
         self.status(alias)
     }
 
+    /// Each declared spend ceiling as a start's spend check would count it now, under the
+    /// pool's lock (story:limits-read, [`RunpodProvider::ceilings`]): one spend read of the
+    /// account and nothing else; it starts, stops and creates nothing. Empty, with no read,
+    /// when no ceiling is declared.
+    pub fn spend_ceilings(&self) -> Vec<CeilingReading> {
+        let mut inner = self.lock();
+        inner.set_live_spend();
+        inner.provider.ceilings()
+    }
+
     /// The controller's view. Contacts nobody.
     pub fn view(&self) -> HostingView {
         self.lock().controller.view()
@@ -857,6 +867,25 @@ impl<T: RunpodTransport> Inner<T> {
             .deployments
             .into_iter()
             .find(|record| &record.deployment == deployment)
+    }
+
+    /// Hands the spend check every pod this controller's records hold as occupying a slot,
+    /// from its submission: what a start's check, and the owner's read of the ceilings, count
+    /// as running.
+    fn set_live_spend(&mut self) {
+        let live = self
+            .live_records()
+            .into_iter()
+            .filter(|record| record.phase.occupies_a_slot())
+            .filter_map(|record| {
+                Some((
+                    record.requested.model,
+                    record.started_at_ms?,
+                    record.request_id,
+                ))
+            })
+            .collect();
+        self.provider.set_live(live);
     }
 
     fn live_records(&self) -> Vec<DeploymentRecord> {
@@ -1244,21 +1273,7 @@ impl<T: RunpodTransport> Inner<T> {
                 },
             )
             .and_then(|_| {
-                // The spend check before the create counts every pod this controller's
-                // records hold as occupying a slot, from its submission.
-                let live = self
-                    .live_records()
-                    .into_iter()
-                    .filter(|record| record.phase.occupies_a_slot())
-                    .filter_map(|record| {
-                        Some((
-                            record.requested.model,
-                            record.started_at_ms?,
-                            record.request_id,
-                        ))
-                    })
-                    .collect();
-                self.provider.set_live(live);
+                self.set_live_spend();
                 let _stale = self.provider.take_spend_refusal();
                 self.apply(
                     now,

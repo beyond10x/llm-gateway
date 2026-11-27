@@ -452,6 +452,11 @@ impl RelayTargets for BedrockTargets {
         }
         self.rest.unavailable_reason(alias)
     }
+
+    /// A Bedrock model has no spend ceiling: every one is `rest`'s (story:limits-read).
+    fn spend_limits(&self) -> Vec<llm_gateway::SpendLimit> {
+        self.rest.spend_limits()
+    }
 }
 
 fn label(value: &str) -> Result<Label, Refusal> {

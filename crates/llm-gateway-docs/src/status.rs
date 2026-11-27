@@ -202,6 +202,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Relay",
+        "The spend ceilings readable",
+        "GET /v1/limits, for the owner, lists each enforced spend ceiling, daily before total, with its cap, its window in UTC milliseconds, what the spend check counts as spent in it now (the larger of the reported spend and the ledger's, plus the live pods' estimate), what is left (never below 0) and the last start it refused. A start is admitted exactly when its estimate fits in what is left. With no ceiling the list is empty. Tested over the emulator.",
+        "crates/llm-gateway-cli/tests/spend_limits.rs::limits_and_the_spend_check_agree_at_the_boundary",
+        GATEWAY,
+    ),
+    shipped(
+        "Relay",
         "Model profiles with capacity fallback",
         "A model may declare ordered profiles, each GPU types with their vLLM settings; when Runpod refuses every create of a profile for capacity the start moves on to the next profile inside the same startup deadline and spend check, and the usage record names the profile that served. Tested over the emulator.",
         "crates/llm-gateway-cli/tests/relaying.rs::a_relayed_call_names_the_profile_of_the_pod_that_served",

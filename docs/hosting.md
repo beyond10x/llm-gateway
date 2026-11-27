@@ -701,6 +701,13 @@ no further GPU type; the deployment is withdrawn (`cancelled`), the pool answers
 spend ceiling`, names the model, the ceiling (`daily`, `total` or `unknown`) and the excess in
 USD. The client's message names neither.
 
+`RunpodPool::spend_ceilings` reads, under the pool's lock, what the check would count now for
+each declared ceiling before a start's own estimate (the first two items above, with one spend
+read), its window and the last start it refused (`RunpodProvider::ceilings`); the gateway's
+owner reads it at `GET /v1/limits` (`docs/gateway.md`, "The spend ceilings"). The read and the
+check share one computation, so a start is admitted exactly when its own estimate is at most
+what every ceiling has left.
+
 The check errs toward refusing, and its billing assumptions are unchecked against a live
 account:
 

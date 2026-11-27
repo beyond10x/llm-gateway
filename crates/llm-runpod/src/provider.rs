@@ -25,7 +25,7 @@ use crate::{
     config::image_allowed,
     ledger::Ledger,
     request::{Tags, in_namespace, pod_request},
-    spend::{DAY_MS, admit, estimate},
+    spend::{CeilingReading, DAY_MS, SpendCeiling, admit, estimate},
 };
 
 /// Why a pod can no longer serve and has to be replaced.
@@ -72,6 +72,9 @@ pub struct RunpodProvider<T> {
     ledger: Option<Ledger>,
     /// Why the last create was refused by the spend check, until taken.
     spend_refusal: Option<SpendRefusal>,
+    /// When the spend check last refused a start for the daily and for the total ceiling, and
+    /// the start's model (story:limits-read).
+    refused: [Option<(u64, Identifier)>; 2],
     /// The GPU type of each pod by incarnation, as its create or a listing reported it: a GPU
     /// type belongs to at most one profile of a model, so it names the pod's profile.
     gpus: BTreeMap<String, String>,
@@ -122,6 +125,7 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             live: Vec::new(),
             ledger: None,
             spend_refusal: None,
+            refused: [None, None],
             gpus: BTreeMap::new(),
             condemned: BTreeSet::new(),
             unlisted: false,
@@ -258,29 +262,49 @@ impl<T: RunpodTransport> RunpodProvider<T> {
     /// write failed, or a live pod's model or this one has no declared price, or this model is
     /// not declared.
     pub fn admit_spend(&mut self, alias: &Identifier) -> Result<(), SpendRefusal> {
-        let Some(policy) = self.spend.as_ref().filter(|policy| policy.is_metered()) else {
+        let Some(policy) = self.spend.clone().filter(SpendPolicy::is_metered) else {
             return Ok(());
         };
-        let price = |alias: &Identifier| policy.price_per_hour_micro_usd.get(alias).copied();
-        let startup_ms = |alias: &Identifier| {
+        let estimated = estimate(
+            policy
+                .price_per_hour_micro_usd
+                .get(alias)
+                .copied()
+                .ok_or(SpendRefusal::Unknown)?,
             self.models
                 .get(alias)
                 .map(|model| model.startup_deadline_ms)
-        };
-        let now = self.clock.now_ms();
-        let mut estimated = estimate(
-            price(alias).ok_or(SpendRefusal::Unknown)?,
-            startup_ms(alias).ok_or(SpendRefusal::Unknown)?,
+                .ok_or(SpendRefusal::Unknown)?,
         );
+        let now = self.clock.now_ms();
+        let spent = self.counted(&policy, now)?;
+        admit(&policy, spent, estimated)
+    }
+
+    /// What the spend check counts against each ceiling at `now`, before a start's own estimate
+    /// ([`Self::admit_spend`], and the owner's read, [`Self::ceilings`]): the account's spend,
+    /// read once, or the ledger's when it holds more, plus the running estimate of the live
+    /// pods, each at least its own startup estimate.
+    ///
+    /// # Errors
+    ///
+    /// [`SpendRefusal::Unknown`] as [`Self::admit_spend`] says, for everything but the
+    /// starting model's own price.
+    fn counted(&mut self, policy: &SpendPolicy, now: u64) -> Result<AccountSpend, SpendRefusal> {
+        let price = |alias: &Identifier| policy.price_per_hour_micro_usd.get(alias).copied();
+        let mut running = 0_u64;
         for (live, submitted_at, _) in &self.live {
             let price = price(live).ok_or(SpendRefusal::Unknown)?;
+            let startup_ms = self
+                .models
+                .get(live)
+                .map(|model| model.startup_deadline_ms)
+                .ok_or(SpendRefusal::Unknown)?;
             // A pod counts at least what its own start was admitted at: one submitted moments
             // ago would otherwise add nothing, and two starts in a row would share one headroom.
-            let running = estimate(price, now.saturating_sub(*submitted_at)).max(estimate(
-                price,
-                startup_ms(live).ok_or(SpendRefusal::Unknown)?,
-            ));
-            estimated = estimated.saturating_add(running);
+            let estimated =
+                estimate(price, now.saturating_sub(*submitted_at)).max(estimate(price, startup_ms));
+            running = running.saturating_add(estimated);
         }
         let day_start = now - now % DAY_MS;
         // The ledger's pods that no live record holds: stopped ones, and ones from before a
@@ -300,7 +324,6 @@ impl<T: RunpodTransport> RunpodProvider<T> {
                 })
             }
         };
-        let policy = policy.clone();
         let reported = self
             .transport
             .account_spend(day_start)
@@ -311,7 +334,59 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             daily_micro_usd: reported.daily_micro_usd.max(ledgered.daily_micro_usd),
             total_micro_usd: reported.total_micro_usd.max(ledgered.total_micro_usd),
         });
-        admit(&policy, spent, estimated)
+        Ok(AccountSpend {
+            daily_micro_usd: spent.daily_micro_usd.saturating_add(running),
+            total_micro_usd: spent.total_micro_usd.saturating_add(running),
+        })
+    }
+
+    /// Each declared ceiling as the spend check counts it now (story:limits-read), the daily one
+    /// first: its window, what [`Self::counted`] counts against it, read with one spend read as
+    /// a start's check reads it, and the last start it refused. A start is admitted exactly
+    /// when its own estimate fits in what every ceiling has left. Empty when no ceiling is
+    /// declared, with no read.
+    pub fn ceilings(&mut self) -> Vec<CeilingReading> {
+        let Some(policy) = self.spend.clone().filter(SpendPolicy::is_metered) else {
+            return Vec::new();
+        };
+        let now = self.clock.now_ms();
+        let day_start = now - now % DAY_MS;
+        let spent = self.counted(&policy, now).ok();
+        let declared = [
+            (
+                SpendCeiling::Daily,
+                policy.daily_cap_micro_usd,
+                (day_start, day_start.saturating_add(DAY_MS)),
+                spent.map(|spent| spent.daily_micro_usd),
+            ),
+            (
+                SpendCeiling::Total,
+                policy.total_cap_micro_usd,
+                (now.saturating_sub(TOTAL_WINDOW_MS), now),
+                spent.map(|spent| spent.total_micro_usd),
+            ),
+        ];
+        declared
+            .into_iter()
+            .filter_map(|(ceiling, cap, (start, end), spent)| {
+                Some(CeilingReading {
+                    ceiling,
+                    cap_micro_usd: cap?,
+                    window_start_ms: start,
+                    window_end_ms: end,
+                    spent_micro_usd: spent,
+                    last_refusal: self.refused[refused_slot(ceiling)].clone(),
+                })
+            })
+            .collect()
+    }
+
+    /// Records that the spend check refused a start of `alias` now: a ceiling's own refusal is
+    /// its last; one for an unknown spend names no ceiling.
+    fn remember_refusal(&mut self, refusal: SpendRefusal, alias: &Identifier) {
+        if let SpendRefusal::Over { ceiling, .. } = refusal {
+            self.refused[refused_slot(ceiling)] = Some((self.clock.now_ms(), alias.clone()));
+        }
     }
 
     fn model_of(&self, key: &ResourceKey) -> Option<&RunpodModel> {
@@ -504,6 +579,7 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             // every profile, is admitted on its own. A refused check sends nothing and tries no
             // further GPU type and no further profile.
             if let Err(refusal) = self.admit_spend(&request.spec.model) {
+                self.remember_refusal(refusal, &request.spec.model);
                 self.spend_refusal = Some(refusal);
                 return not_sent;
             }
@@ -576,6 +652,14 @@ enum ProfileOutcome {
     /// The start's startup deadline passed before the next create: the start ends, rejected,
     /// with no further create sent.
     PastDeadline,
+}
+
+/// Where [`RunpodProvider`] keeps a ceiling's last refusal.
+const fn refused_slot(ceiling: SpendCeiling) -> usize {
+    match ceiling {
+        SpendCeiling::Daily => 0,
+        SpendCeiling::Total => 1,
+    }
 }
 
 /// Drops every restart more than `window_ms` before `now_ms`.

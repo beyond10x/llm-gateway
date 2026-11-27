@@ -65,8 +65,9 @@ pub struct CeilingReading {
     pub window_start_ms: u64,
     pub window_end_ms: u64,
     /// What a start's check counts against the ceiling now, before the start's own estimate:
-    /// the larger of the reported spend and the ledger's, plus the running estimate of the
-    /// live pods. `None` when the check cannot count, and refuses every start `Unknown`.
+    /// the larger of the reported spend and the ledger's inside the window, plus each live
+    /// pod's whole run so far, also the part before the window began. `None` when the check
+    /// cannot count, and refuses every start `Unknown`.
     pub spent_micro_usd: Option<u64>,
     /// When the check last refused a start for this ceiling, and the start's model.
     pub last_refusal: Option<(u64, Identifier)>,

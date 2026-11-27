@@ -411,24 +411,34 @@ Each entry is one ceiling, the daily one before the total one:
 declares the ceiling, `ceiling` is `daily` or `total`, and `cap_usd` its amount. Every amount is
 a decimal string of USD with six decimals: the micro-USD the spend check compares exactly. The
 window is in Unix milliseconds, UTC: for `daily` the start of the current UTC day and the start
-of the next, when the ceiling starts again from nothing; for `total` the 30 days up to now (from
-0 at the earliest), which the spend ledger counts and Runpod reports its pod billing over.
+of the next, when the day's reported and ledger spend starts again from nothing; for `total` the
+30 days up to now (from 0 at the earliest), which the spend ledger counts and Runpod reports its
+pod billing over.
 
-`spent_usd` is what the spend check counts against the ceiling in its window at the instant of
-the read, read under the pool's lock from the same values a start's check reads: the larger of
-the account's reported spend and the spend ledger's, plus the running estimate of the pool's
-live pods (`docs/hosting.md`). `left_usd` is the cap less `spent_usd`, never below `0.000000`.
+`spent_usd` is what the spend check counts against the ceiling at the instant of the read, read
+under the pool's lock from the same values a start's check reads (`docs/hosting.md`): the larger
+of the account's reported spend and the spend ledger's inside the window, plus each live pod's
+whole run so far. A live pod is not cut at the window's start: one started before the UTC day
+began counts its hours before midnight against today's ceiling too, and so a daily entry need not
+read `0.000000` at the start of a day while a pod runs. `left_usd` is the cap less `spent_usd`,
+never below `0.000000`.
 So a start is admitted exactly when its own estimate (the model's price per hour times its
 startup deadline) is at most `left_usd` of every entry, and an entry whose `spent_usd` equals its
 cap reads `left_usd` `0.000000` while every start is refused `spend-ceiling`. When the check
 cannot count (the spend read failed or answered nothing, the ledger could not be read or
 written, or a live pod has no price), `spent_usd` and `left_usd` are both `null`, and every start
 is refused `spend-ceiling` until it can. `last_refusal` is the instant and the model of the last
-start, by a call or a wake, that this ceiling refused since the gateway started, or `null`; a
-refusal for an unknown spend names no ceiling and is on no entry.
+start, by a call or a wake, refused since the gateway started because it would pass this
+ceiling, or `null`: a start that would pass both is on both entries, though its refusal is the
+daily one. A refusal for an unknown spend names no ceiling and is on no entry.
 
-A read makes one spend read of the account, as a start's check does, and nothing else: it
-starts, stops and creates nothing, makes no usage record and counts no series. A ceiling binds
+A read does what a start does before its check, under the pool's lock, and no more: one listing
+of the account's pods, so a pod that ended out of band is no longer counted live (retiring what
+a start would retire and submitting the stops the pool already owes), then one billing request
+for the account's spend. Neither is cached: each read costs one listing and one billing request,
+calls and wakes of the pool's models wait behind it, and it waits behind a start in progress. It
+starts and creates nothing, makes no usage record and counts no series; when the pool's
+controller refuses the step, `spent_usd` and `left_usd` are `null`. A ceiling binds
 only a pool the gateway composed: a provider whose `connectors` connection or REST API was not
 reachable at start has no pool, and its ceilings are not listed. The dashboard does not show
 these entries (its snapshot is written up to twice a second, and an entry costs a spend read).

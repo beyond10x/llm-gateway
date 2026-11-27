@@ -486,9 +486,11 @@ types:
   # without a relay, the list is empty. It takes the credential and the method, body and
   # readiness checks of StatusRoute, all before the source is asked anything, and the refusals
   # of `/v1/routes` without the owner's credential. Each entry is read under the pool's lock with
-  # the values the spend check of a start reads at that instant: one spend read of the account,
-  # the ledger and the running estimate of the live pods. It starts, stops and creates nothing,
-  # makes no usage record and counts no series.
+  # the values the spend check of a start reads at that instant, after the step a start takes
+  # before its check: one listing of the account's pods (retiring what a start would and
+  # submitting the stops the pool owes), then one spend read of the account, the ledger and the
+  # running estimate of the live pods. Nothing is cached, and the pool's starts wait behind a
+  # read. It starts and creates nothing, makes no usage record and counts no series.
   - name: llm-gateway.gateway.LimitsRoute
     kind: enum
     attributes:
@@ -801,15 +803,18 @@ entities:
   # with six decimals, the micro-USD the check compares exactly. The window is in Unix
   # milliseconds, UTC: for `daily` the start of the current UTC day and the start of the next,
   # for `total` 30 days before now (0 at the earliest) and now. `spent_usd` is what the check
-  # counts against the ceiling in the window: the larger of the account's reported spend and the
-  # ledger's, plus the running estimate of the pool's live pods; `left_usd` is the cap less that,
+  # counts against the ceiling: the larger of the account's reported spend and the ledger's
+  # inside the window, plus each live pod's whole run so far (a live pod is not cut at the
+  # window's start, so a pod running across midnight counts its earlier hours against the new
+  # day too); `left_usd` is the cap less that,
   # never below `0.000000`. So a start is admitted exactly when its own estimate (its price per
   # hour times its startup deadline) is at most `left_usd` of every entry, and spent equal to the
   # cap is `left_usd` `0.000000` with every start refused `spend-ceiling`. When the check cannot
   # count (the spend read failed or answered nothing, the ledger is unsound, or a live pod has no
   # price), both are `null` and every start is refused. `last_refusal` is
-  # `{"at_ms","model"}` of the last start this ceiling refused since the gateway started, or
-  # `null`; a refusal for an unknown spend names no ceiling and is on no entry.
+  # `{"at_ms","model"}` of the last start refused since the gateway started because it would pass
+  # this ceiling (one that would pass both is on both entries), or `null`; a refusal for an
+  # unknown spend names no ceiling and is on no entry.
   - name: llm-gateway.gateway.LimitEntry
     identity: {name: id, type: String}
     fields:

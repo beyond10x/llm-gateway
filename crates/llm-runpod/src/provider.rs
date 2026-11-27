@@ -278,7 +278,30 @@ impl<T: RunpodTransport> RunpodProvider<T> {
         );
         let now = self.clock.now_ms();
         let spent = self.counted(&policy, now)?;
+        // Each ceiling the start would pass names it as its last refusal (story:limits-read);
+        // the refusal itself names the first, the daily one before the total one.
+        for (ceiling, cap, spent) in [
+            (
+                SpendCeiling::Daily,
+                policy.daily_cap_micro_usd,
+                spent.daily_micro_usd,
+            ),
+            (
+                SpendCeiling::Total,
+                policy.total_cap_micro_usd,
+                spent.total_micro_usd,
+            ),
+        ] {
+            if cap.is_some_and(|cap| spent.saturating_add(estimated) > cap) {
+                self.refused[refused_slot(ceiling)] = Some((now, alias.clone()));
+            }
+        }
         admit(&policy, spent, estimated)
+    }
+
+    /// Whether a spend ceiling is declared, so the spend check counts anything.
+    pub fn metered(&self) -> bool {
+        self.spend.as_ref().is_some_and(SpendPolicy::is_metered)
     }
 
     /// What the spend check counts against each ceiling at `now`, before a start's own estimate
@@ -379,14 +402,6 @@ impl<T: RunpodTransport> RunpodProvider<T> {
                 })
             })
             .collect()
-    }
-
-    /// Records that the spend check refused a start of `alias` now: a ceiling's own refusal is
-    /// its last; one for an unknown spend names no ceiling.
-    fn remember_refusal(&mut self, refusal: SpendRefusal, alias: &Identifier) {
-        if let SpendRefusal::Over { ceiling, .. } = refusal {
-            self.refused[refused_slot(ceiling)] = Some((self.clock.now_ms(), alias.clone()));
-        }
     }
 
     fn model_of(&self, key: &ResourceKey) -> Option<&RunpodModel> {
@@ -579,7 +594,6 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             // every profile, is admitted on its own. A refused check sends nothing and tries no
             // further GPU type and no further profile.
             if let Err(refusal) = self.admit_spend(&request.spec.model) {
-                self.remember_refusal(refusal, &request.spec.model);
                 self.spend_refusal = Some(refusal);
                 return not_sent;
             }

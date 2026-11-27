@@ -820,13 +820,31 @@ impl<T: RunpodTransport> RunpodPool<T> {
     }
 
     /// Each declared spend ceiling as a start's spend check would count it now, under the
-    /// pool's lock (story:limits-read, [`RunpodProvider::ceilings`]): one spend read of the
-    /// account and nothing else; it starts, stops and creates nothing. Empty, with no read,
-    /// when no ceiling is declared.
+    /// pool's lock (story:limits-read, [`RunpodProvider::ceilings`]). It takes the step a start
+    /// takes before its check (one listing of the account's pods, retiring what a start would
+    /// retire and submitting the stops the pool owes), so it counts the live pods the check
+    /// would count, then makes one spend read. It starts and creates nothing. A step the
+    /// controller refuses leaves every ceiling's spend unknown, as the start would get no check.
+    /// Empty, with no step and no read, when no ceiling is declared.
     pub fn spend_ceilings(&self) -> Vec<CeilingReading> {
         let mut inner = self.lock();
+        if !inner.provider.metered() {
+            return Vec::new();
+        }
+        let now = self.clock.now_ms();
+        let stepped = inner.step(now).is_ok();
+        let aliases: Vec<_> = inner.slots.keys().cloned().collect();
+        for alias in aliases {
+            inner.forget_terminal(&alias);
+        }
         inner.set_live_spend();
-        inner.provider.ceilings()
+        let mut readings = inner.provider.ceilings();
+        if !stepped {
+            for reading in &mut readings {
+                reading.spent_micro_usd = None;
+            }
+        }
+        readings
     }
 
     /// The controller's view. Contacts nobody.

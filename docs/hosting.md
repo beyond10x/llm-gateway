@@ -702,8 +702,11 @@ spend ceiling`, names the model, the ceiling (`daily`, `total` or `unknown`) and
 USD. The client's message names neither.
 
 `RunpodPool::spend_ceilings` reads, under the pool's lock, what the check would count now for
-each declared ceiling before a start's own estimate (the first two items above, with one spend
-read), its window and the last start it refused (`RunpodProvider::ceilings`); the gateway's
+each declared ceiling before a start's own estimate (the first two items above: a live pod's
+whole run so far, also before the UTC day began, and one spend read), its window and the last
+start that would have passed it (`RunpodProvider::ceilings`). It first takes the step a start
+takes before its check (one listing, retiring and stopping what a start would), so both count
+the same live pods. The gateway's
 owner reads it at `GET /v1/limits` (`docs/gateway.md`, "The spend ceilings"). The read and the
 check share one computation, so a start is admitted exactly when its own estimate is at most
 what every ceiling has left.

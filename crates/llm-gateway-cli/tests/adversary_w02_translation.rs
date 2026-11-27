@@ -387,3 +387,58 @@ fn adv_translation_a_request_naming_no_limit_leaves_room_for_its_input_in_the_wi
         "the upstream is asked for max_tokens {max_tokens} of a {window}-token window: {body}"
     );
 }
+
+/// Adversary (story:model-alias-thinking-off). `[aliases.<alias>]` accepts any `[models.*]`
+/// model, and the binary relays the alias with its model's wires and the forced effort
+/// `none` (`relay_models`). A Runpod model whose `wires` omit `messages` (the support
+/// document's own `["chat", "responses"]`) has every Messages request to the alias translated
+/// (`served_model` picks the translator), and the docs promise that every Messages request to
+/// an alias reaches the pod with `"enable_thinking":false` whatever effort it names
+/// (`docs/gateway.md` step 6, the deployment reference `#aliases`, the status page). The
+/// translator is handed the `RelayModel`, forced effort included, so its upstream request must
+/// carry thinking off too.
+#[test]
+fn adversary_alias_a_translated_messages_request_to_a_forced_none_model_reaches_the_pod_with_thinking_off()
+ {
+    let model = RelayModel::new(
+        Label::new("small-plain").unwrap(),
+        Label::new("small").unwrap(),
+        vec![Wire::Chat, Wire::Responses],
+    )
+    .unwrap()
+    .with_forced_effort(llm_gateway::ForcedEffort::None);
+    let body = "{\"model\":\"small-plain\",\"max_tokens\":64,\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}],\"output_config\":{\"effort\":\"high\"}}";
+    let prepared = LlmTranslator::new()
+        .prepare(&TranslationRequest {
+            ingress: Wire::Messages,
+            upstream: Wire::Chat,
+            model: &model,
+            body: body.as_bytes(),
+            anthropic_beta: None,
+            caller: llm_gateway::Caller::default(),
+        })
+        .unwrap_or_else(|code| panic!("prepare refused {code:?}"));
+    let chat = concat!(
+        "data: {\"id\":\"chatcmpl-up\",\"model\":\"small\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hello\"},\"finish_reason\":null}]}\n\n",
+        "data: {\"id\":\"chatcmpl-up\",\"model\":\"small\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+        "data: [DONE]\n\n",
+    );
+    let mut raw = format!(
+        "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+        chat.len()
+    )
+    .into_bytes();
+    raw.extend_from_slice(chat.as_bytes());
+    let (address, thread) = upstream(raw, Duration::ZERO);
+    let mut answer = Recorded::default();
+    let ran = prepared.run(&Loopback(address.to_string()), &mut answer);
+    let request = String::from_utf8_lossy(&thread.join().unwrap()).into_owned();
+    let sent = request.split_once("\r\n\r\n").map_or("", |(_, body)| body);
+    assert_eq!(ran, Ok(()), "{sent}");
+    let sent: serde_json::Value = serde_json::from_str(sent).unwrap();
+    assert_eq!(
+        sent["chat_template_kwargs"]["enable_thinking"],
+        serde_json::Value::Bool(false),
+        "a Messages request to the alias reached the pod with thinking left on: {sent}"
+    );
+}

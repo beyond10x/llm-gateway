@@ -4,7 +4,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:0448abfa9ae70359f97dfca2ad1c43547f90f4db816d98e49ee067f4aeba279e",
+    "contract_digest": "slice-sha256/2:e5de070493d54f25c068e67e19f554876695d82e8f5ef15c54dd9282812cc729",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -117,6 +117,9 @@
         },
         "token_price": {
           "$ref": "#/$defs/llm-gateway.deployment.TokenPriceDeclaration"
+        },
+        "status_probe": {
+          "$ref": "#/$defs/llm-gateway.deployment.StatusProbe"
         }
       },
       "required": [
@@ -138,6 +141,27 @@
         "Low",
         "Medium",
         "Xhigh"
+      ]
+    },
+    "llm-gateway.deployment.StatusProbe": {
+      "title": "StatusProbe",
+      "x-ess-name": "llm-gateway.deployment.StatusProbe",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Models",
+        "CountTokens"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "code",
+          "type": "String",
+          "values": {
+            "CountTokens": "count-tokens",
+            "Models": "models"
+          }
+        }
       ]
     },
     "llm-gateway.deployment.TokenPriceDeclaration": {

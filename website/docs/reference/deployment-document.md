@@ -126,7 +126,15 @@ of its targets with its `auth_kind` and `billing_kind`, never its URL or credent
 when a status is read: `GET <base path>/models` with its credential, `ready` on a 2xx answer
 (and on 401 or 403 for a `client` endpoint, probed without a credential), otherwise
 `unreachable` with `no-answer`, `credential-refused` or `status-<code>`. A probe ends within
-5 s and its result is reused for 10 s. Its wake stays `path-unknown`.
+5 s and its result is reused for 10 s. Its wake stays `path-unknown`. An endpoint that answers
+model calls and no model list names another probe with `status_probe = "count-tokens"` (below).
+
+A `ready` model's entry in `GET /v1/status` adds `"reason":"serves-claude-code-clients-only"`,
+and its row on the dashboard says "reachable, serves Claude Code clients only", when the
+gateway's own record of its last 20 relayed model calls holds at least 2 from Claude Code (a
+`user-agent` of `claude-cli/…`), every one answered 2xx, and at least 2 from other clients, every
+one answered `429` with an error of type `rate_limit_error`. Every call is still relayed as the
+client sent it.
 
 | Key | Default | Rule |
 | --- | --- | --- |
@@ -147,6 +155,7 @@ when a status is read: `GET <base path>/models` with its credential, `ready` on 
 | `retry_max_attempts` | 4 | On a `client` endpoint only, 1 to 10: the most attempts a call makes on a 429, 502, 503 or 529. A client that sends `x-stainless-retry-count` retries on its own and gets one attempt. |
 | `retry_max_wait` | 60 | On a `client` endpoint only, 0 to 600 seconds: the most a call waits for its retries in all. |
 | `compact_window` | absent | 100000 to 1000000 tokens: the auto-compact window `b10x-llm-gateway claude` gives Claude Code for this model. |
+| `status_probe` | `models` | How the model's status is read. `models`: `GET <base path>/models`. `count-tokens`: one `POST <base path>/messages/count_tokens` with the credential, the static headers, `anthropic-version: 2023-06-01` unless a static header names it, and the body `{"model":"<upstream_model>","messages":[{"role":"user","content":"ping"}]}`, which asks for no generation; a 2xx answer is `ready`, any other is read as the `models` probe's, within the same bounds. `count-tokens` needs the `messages` wire. Any other value, and `count-tokens` on a model without the `messages` wire, is `config:value`. |
 | `[hosted.<alias>.token_price]` | absent | What the model's tokens cost, on every kind of hosted model ([token prices](#token-prices)). |
 
 Every wire path starts `/v1/`. A `base_url` without a path, or with only `/`, is asked on the
@@ -268,6 +277,7 @@ refused as on an endpoint.
 | `auth_kind` | `anonymous` | `anonymous` only: an Ollama server is sent no credential. |
 | `credential_file`, `credential`, `credential_header` | absent | Refused. |
 | `model_prefix` | absent | Refused: the model's status is read for `upstream_model` alone, so the model serves its alias alone. |
+| `status_probe` | absent | Refused: the model's status is read from the server's own lists. |
 | `billing_kind` | `self-hosted` | As for an endpoint. |
 
 Every refusal is `config:value` naming the key, and quotes no value. The model's status is read

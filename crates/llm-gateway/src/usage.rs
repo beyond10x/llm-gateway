@@ -63,6 +63,9 @@ enum Place {
     Root,
     /// The `message` or `response` member of a top-level object.
     Holder,
+    /// The `error` member of a top-level object: its `type` is kept
+    /// ([`UsageScanner::error_type`]).
+    Error,
     /// A usage object.
     Usage,
     /// `prompt_tokens_details` or `input_tokens_details` of a usage object.
@@ -77,6 +80,7 @@ impl Place {
         match (self, name) {
             (Self::Root | Self::Holder, Some(b"usage")) => Self::Usage,
             (Self::Root, Some(b"message" | b"response")) => Self::Holder,
+            (Self::Root, Some(b"error")) => Self::Error,
             (Self::Usage, Some(b"prompt_tokens_details" | b"input_tokens_details")) => {
                 Self::Details
             }
@@ -164,6 +168,9 @@ pub struct UsageScanner {
     token: Token,
     /// A top-level object was its wire's terminal error.
     terminal_error: bool,
+    /// The `type` of the last top-level object's `error` object, when it was a name of at most
+    /// [`NAME_BYTES`].
+    error_type: Option<Name>,
 }
 
 impl UsageScanner {
@@ -186,6 +193,18 @@ impl UsageScanner {
     /// top level (a tool call's arguments, a response's own `error`), is none.
     pub fn terminal_error(&self) -> bool {
         self.terminal_error
+    }
+
+    /// The `type` of the answer's error (story:hosted-status-probe): the string member `type` of
+    /// the object that is the member `error` of a top-level object, as the messages wire writes
+    /// an error (`{"type":"error","error":{"type":"rate_limit_error",…}}`) and the chat wire its
+    /// error chunk. The last such object's, `None` when none was read or its `type` was longer
+    /// than 32 bytes or held an escape.
+    pub fn error_type(&self) -> Option<&str> {
+        self.error_type
+            .as_ref()
+            .and_then(Name::get)
+            .and_then(|bytes| std::str::from_utf8(bytes).ok())
     }
 
     /// The innermost open container's place, [`Place::Other`] when none is open.
@@ -228,11 +247,17 @@ impl UsageScanner {
                         value.unread = true;
                     }
                 } else if byte == b'"' {
-                    if let Some(b"error" | b"response.failed") = value.as_ref().and_then(Name::get)
+                    let kept = *value;
+                    self.token = Token::Between;
+                    if self.innermost() == Place::Error {
+                        if kept.is_some() {
+                            self.error_type = kept;
+                        }
+                    } else if let Some(b"error" | b"response.failed") =
+                        kept.as_ref().and_then(Name::get)
                     {
                         self.terminal_error = true;
                     }
-                    self.token = Token::Between;
                 } else if let Some(value) = value {
                     value.push(byte);
                 }
@@ -287,7 +312,7 @@ impl UsageScanner {
                     }
                 } else {
                     let member = self.member.take();
-                    let typed = self.innermost() == Place::Root
+                    let typed = matches!(self.innermost(), Place::Root | Place::Error)
                         && self.reading()
                         && member.as_ref().and_then(Name::get) == Some(b"type");
                     Token::Text {
@@ -624,6 +649,46 @@ mod tests {
         for (answer, bytes) in not_ended {
             for cut in 0..=bytes.len() {
                 assert!(!ended_in_error(bytes, cut), "{answer}, cut at {cut}");
+            }
+        }
+    }
+
+    /// story:hosted-status-probe: the `type` of a top-level object's `error` object, wherever the
+    /// answer is cut, and none for a `type` anywhere else.
+    #[test]
+    fn the_error_type_is_the_type_of_a_top_level_error_object_and_nothing_else() {
+        let cases: [(&[u8], Option<&str>); 6] = [
+            (
+                br#"{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}"#,
+                Some("rate_limit_error"),
+            ),
+            (
+                br#"{"error":{"message":"m","type":"rate_limit_error","code":null}}"#,
+                Some("rate_limit_error"),
+            ),
+            (
+                b"event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\"}}\n\n",
+                Some("overloaded_error"),
+            ),
+            (br#"{"type":"rate_limit_error","error":null}"#, None),
+            (
+                br#"{"message":{"error":{"type":"rate_limit_error"}},"error":{"detail":{"type":"x"}}}"#,
+                None,
+            ),
+            (br#"{"error":{"type":"rate\u005flimit_error"}}"#, None),
+        ];
+        for (bytes, expected) in cases {
+            for cut in 0..=bytes.len() {
+                let mut scanner = UsageScanner::default();
+                let (left, right) = bytes.split_at(cut);
+                scanner.feed(left);
+                scanner.feed(right);
+                assert_eq!(
+                    scanner.error_type(),
+                    expected,
+                    "{}, cut at {cut}",
+                    String::from_utf8_lossy(bytes)
+                );
             }
         }
     }

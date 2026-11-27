@@ -458,6 +458,7 @@
       "routes": [
         {
           "route": "claude-sonnet",
+          "reason": null,
           "calls": 4,
           "errors": 4,
           "cancelled": 0,
@@ -476,6 +477,7 @@
         },
         {
           "route": "qwen-coder",
+          "reason": null,
           "calls": 1,
           "errors": 1,
           "cancelled": 0,

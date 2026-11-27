@@ -367,6 +367,20 @@ types:
   - name: llm-gateway.deployment.HostedReasoningEffort
     kind: enum
     variants: [Low, Medium, Xhigh]
+  # How a hosted endpoint's status is read (HostedDeclaration `status_probe`, DECIDED 2026-11-27,
+  # story:hosted-status-probe): `models`, the default, is the probe a hosted model always had,
+  # `GET <base path>/models` (llm-gateway.gateway LifecycleRoute); `count-tokens` is one `POST
+  # <base path>/messages/count_tokens` of a one-word message for the model's `upstream_model`, for
+  # an endpoint that answers model calls and token counts and no model list (a local Messages
+  # proxy answered `GET /v1/models` 404, so its model was listed `unreachable` `status-404`
+  # though every call was answered).
+  - name: llm-gateway.deployment.StatusProbe
+    kind: enum
+    attributes:
+      - {name: code, type: String}
+    variants:
+      - {name: Models, attributes: {code: models}}
+      - {name: CountTokens, attributes: {code: count-tokens}}
   # `[providers.<name>]`. The name is 1..=64 of `a-z 0-9 - _ .` without a leading dash
   # (`config:value`).
   # `connectors`, optional: when present the provider's pods are reached through the connectors
@@ -725,6 +739,21 @@ types:
   #                      by default; any other string, `high` and `max` included, is
   #                      `config:value`. A messages-wire request that names no effort reaches
   #                      the endpoint with this one (llm-gateway.gateway `Relay`, step 6)
+  #   status_probe       optional, `models` (default) or `count-tokens` (StatusProbe): how the
+  #                      model's status is read. `count-tokens` sends `POST <base
+  #                      path>/messages/count_tokens` (`/v1/messages/count_tokens` without a
+  #                      base path) with `host`, the static headers, the credential as
+  #                      `auth_kind` sends it, `anthropic-version: 2023-06-01` unless a static
+  #                      header names it, `accept: application/json`, `content-type:
+  #                      application/json`, `content-length` and `connection: close`, and the
+  #                      body `{"model":"<upstream_model>","messages":[{"role":"user",
+  #                      "content":"ping"}]}`: a token count, never a generation. Its status is
+  #                      read as the `models` probe's (LifecycleRoute: 2xx `ready`, any other
+  #                      the same `unreachable` sub-phases) within the same bounds. Any other
+  #                      value, and `count-tokens` on a model whose `wires` lack `messages`, is
+  #                      `config:value` naming `hosted.<alias>.status_probe`, quoting no value.
+  #                      Proved by `status_probe_*` in
+  #                      crates/llm-gateway-cli/tests/status_probe.rs
   #   kind               `endpoint` (default), `bedrock` or `ollama`
   #                      (llm-gateway.upstream.HostedKind); any other string is
   #                      `config:schema`. Every rule above is an `endpoint`'s; each key below
@@ -744,12 +773,13 @@ types:
   #   model_prefix       refused (DECIDED 2026-11-25, correction of story:ollama-route): the
   #                      model's status and `model-not-pulled` are read for `upstream_model`
   #                      alone, and a prefix would send names that status does not describe
+  #   status_probe       refused: the model's status is read from the server's lists
   #   billing_kind       default `self-hosted`
   #   each `bedrock` key is refused as on an endpoint
   # A `kind = "bedrock"` model (DECIDED 2026-10-23, story:bedrock-hosted-target): `wires`,
   # `base_url`, `auth_kind`, `credential_file`, `credential_header`, `upstream_model`,
-  # `reasoning_effort` and `headers` are each `config:value` naming the key. Its rules, each a
-  # `config:value` that names the key and never quotes the value:
+  # `reasoning_effort`, `headers` and `status_probe` are each `config:value` naming the key. Its
+  # rules, each a `config:value` that names the key and never quotes the value:
   #   region             required: two or more parts of `a-z` and `0-9` joined by `-`, at most
   #                      32 bytes (`eu-central-1`), the rule llm's Bedrock client applies
   #   model_id           required: the model id, inference-profile id or ARN Bedrock is asked
@@ -818,6 +848,8 @@ types:
       - {name: retry_max_wait, type: 'Optional<Integer>'}
       - {name: compact_window, type: 'Optional<Integer>'}
       - {name: token_price, type: 'Optional<llm-gateway.deployment.TokenPriceDeclaration>'}
+      # Absent is `models`; refused on an `ollama` and a `bedrock` model.
+      - {name: status_probe, type: 'Optional<llm-gateway.deployment.StatusProbe>'}
   # One endpoint of a routes document (RoutesDeclaration), as llm 0.24.0 reads it
   # (`llm_models::routes::EndpointDeclaration`): `base_url` as llm normalises it (one final `/`),
   # `protocol` `messages`, `responses` or `chat-completions` (Wire `Messages`, `Responses`,

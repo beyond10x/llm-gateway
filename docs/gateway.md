@@ -296,6 +296,19 @@ per model at a time (a second read waits for the first and takes its result), an
 reused until the reuse time has passed since its probe ended ([bounds of the status
 probe](#bounds-of-the-status-probe)). Wake stays `path-unknown` for both.
 
+A `[hosted.<alias>]` model may name its probe with `status_probe`: `models`, the default and the
+probe above, or `count-tokens`, for an endpoint that answers model calls and no model list. A
+`count-tokens` model (it must declare the `messages` wire) is probed with one `POST <base
+path>/messages/count_tokens` (`/v1/messages/count_tokens` without a base path) carrying `host`,
+the static headers, its credential as its `auth_kind` sends it, `anthropic-version: 2023-06-01`
+unless a static header names `anthropic-version`, `accept: application/json`, `content-type:
+application/json`, `content-length` and `connection: close`, and the body
+`{"model":"<upstream_model>","messages":[{"role":"user","content":"ping"}]}`. It counts the
+tokens of one word and asks for no generation. Its answer is read as the models probe's is
+(2xx `ready`, 401 or 403 `credential-refused`, any other status `status-<code>`, no status line
+`no-answer`), within the same bounds, one probe per model at a time and its result reused alike
+(`crates/llm-gateway-cli/tests/status_probe.rs`).
+
 An Ollama model's status (`[hosted.<alias>] kind = "ollama"`, [an Ollama
 upstream](#an-ollama-upstream)) is read from its server's own lists instead, never from
 `/v1/models`: `GET /api/tags`, then, only when the tags list the model, `GET /api/ps`. Each
@@ -352,6 +365,24 @@ do not apply to it, and its `callable` follows its phase alone, `true` for `read
 `stopped` `not-loaded` (a call loads the model), `false` for `unreachable`. A model with no
 status (Bedrock) has neither `phase` nor `callable`. Every status is asked side by side, so the
 list is answered within one probe deadline and a second however many endpoints are silent.
+
+A `ready` entry may end with `reason`, what the gateway's own record of the model's last relayed
+calls shows about the clients it serves. The record keeps, per model, the last
+`served-clients-calls-kept` model calls a target answered (a token count is left out): whether
+the client's `user-agent` names Claude Code (its product, before the first `/` or space, is
+`claude-cli`) and how the call was answered. When every kept call from Claude Code was answered
+2xx, every kept call from another client was answered `429` with an error whose `type` is
+`rate_limit_error` (read from the answer as relayed, `{"type":"error","error":{"type":"rate_limit_error",…}}`),
+and each side has at least `served-clients-min-calls` calls, the entry stays `ready` and
+`callable` and adds `"reason":"serves-claude-code-clients-only"`; the dashboard's route row
+names the same reason ("reachable, serves Claude Code clients only"). Any other record names
+none. The record only reads: a call from any client is relayed as it would be without it, and
+the gateway changes no client's headers or body to pass the rule
+(`crates/llm-gateway/tests/served_clients.rs`).
+
+```json
+{"model":"local-messages","kind":"hosted","wires":["messages"],"phase":"ready","callable":true,"reason":"serves-claude-code-clients-only"}
+```
 
 ## Service-account tokens
 
@@ -1761,6 +1792,8 @@ list written by hand.
 | `concurrent-requests` | `DEFAULT_MAX_CONCURRENT_REQUESTS` | 64 |
 | `request-body-bytes` | `MAX_REQUEST_BODY_BYTES` | 33554432 |
 | `ended-calls-held` | `MAX_ENDED_CALLS` | 1024 |
+| `served-clients-calls-kept` | `SERVED_CLIENTS_CALLS` | 20 |
+| `served-clients-min-calls` | `SERVED_CLIENTS_MIN_CALLS` | 2 |
 
 Three checks, and the third is the one that was missing: the table's **constant** column is
 compared against every numeric constant the crate's own source declares, so a bound that exists
@@ -1775,12 +1808,19 @@ than being invisible.
 `owner-credential-bytes`, `label-bytes`, `credential-header-bytes`, `base-path-bytes`,
 `base-path-segments`, `static-header-value-bytes`, `caller-session-bytes`, `principal-bytes`,
 `targets-per-route`,
-`routes`, `request-head-bytes`, `concurrent-requests`, `request-body-bytes` and `ended-calls-held` are maxima; `shared-secret-bytes` is a minimum;
+`routes`, `request-head-bytes`, `concurrent-requests`, `request-body-bytes`, `ended-calls-held`
+and `served-clients-calls-kept` are maxima; `shared-secret-bytes` and `served-clients-min-calls`
+are minima;
 `digest-characters` is an exact length. `request-head-bytes` and `concurrent-requests` are
 `GatewayConfig` defaults an embedding may override; they and `request-body-bytes` (32 MiB, as
 llmgw) are measured by enforcement over a real socket rather than by reading a field.
 `ended-calls-held` is measured over a socket too: after that many model calls have ended, plus
 one, the first one's record is `call-unknown` ([call ids and call records](#call-ids-and-call-records)).
+`served-clients-calls-kept` and `served-clients-min-calls` are the record of a model's last
+relayed calls that the [status list](#the-status-list) reads its `reason` from, measured over a
+socket: the last `served-clients-calls-kept` calls are kept, so a call that breaks the rule
+stops counting once that many newer calls have followed it; `served-clients-min-calls` calls of
+Claude Code and as many of other clients name the reason, and one fewer of each names none.
 
 The delivery of a request head is bounded separately by `GatewayConfig::read_timeout`, a timeout
 rather than a size bound, so it is not in this table. It is one deadline for the whole head, not a

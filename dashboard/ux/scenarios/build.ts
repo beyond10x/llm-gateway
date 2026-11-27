@@ -155,6 +155,7 @@ export class Ledger {
       const def = ROUTES[c.route]!;
       const row = rows.get(c.route) ?? {
         route: c.route,
+        reason: null,
         calls: 0,
         errors: 0,
         cancelled: 0,

@@ -2032,6 +2032,9 @@ pub(crate) struct Limits {
     pub(crate) decoder: Option<Arc<dyn BodyDecoder>>,
 }
 
+/// The error type a rate-limited answer names (`{"type":"error","error":{"type":"rate_limit_error",…}}`).
+const RATE_LIMIT_ERROR: &str = "rate_limit_error";
+
 /// What a relay learned about its call, for the usage record.
 #[derive(Debug, Default)]
 pub(crate) struct Call {
@@ -2086,6 +2089,10 @@ pub(crate) struct Call {
     /// The copy of the call's bytes (story:finished-call-facts); `None` unless the relay was
     /// declared [`Relay::with_call_bytes`] and the call hands a finished call.
     pub(crate) tap: Option<Tap>,
+    /// The answer's error was of type `rate_limit_error` ([`UsageScanner::error_type`]), read
+    /// from its bytes on every relay path; what the record of the clients a model serves reads
+    /// (story:hosted-status-probe).
+    pub(crate) rate_limit_error: bool,
 }
 
 /// How an answer whose head was written fell short of its end.
@@ -2102,8 +2109,10 @@ pub(crate) enum Unfinished {
 impl Call {
     /// Notes the terminal error `scanner` read. It takes the place of a cut noted before it: an
     /// answer that carried its wire's error ends in that error, whether or not its upstream cut it
-    /// afterwards (`llm-gateway.telemetry.CallEnding`).
+    /// afterwards (`llm-gateway.telemetry.CallEnding`). Notes too whether the answer's error was
+    /// a `rate_limit_error`.
     pub(crate) fn note_terminal_error(&mut self, scanner: &UsageScanner) {
+        self.rate_limit_error = scanner.error_type() == Some(RATE_LIMIT_ERROR);
         if scanner.terminal_error() {
             self.unfinished = Some(Unfinished::TerminalError);
         }

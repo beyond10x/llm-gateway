@@ -393,6 +393,13 @@ types:
   # probe"); `route_status_*` in crates/llm-gateway-cli/src/hosted.rs and
   # crates/llm-gateway-cli/tests/wake_status.rs hold them.
   # ESS-LIMIT: a deadline and a reuse window are no ESS construct.
+  # DECIDED 2026-11-27 (story:hosted-status-probe): a `[hosted.<alias>]` model that declares
+  # `status_probe = "count-tokens"` (llm-gateway.deployment.StatusProbe) is probed with one
+  # `POST <base path>/messages/count_tokens` of a one-word message for its `upstream_model`
+  # (HostedDeclaration has the request) in place of `GET <base path>/models`. Its status is
+  # decided as above, under the same deadline, reuse and one probe at a time; the probe never
+  # asks for a generation. A route of the routes document and every other hosted model keep
+  # the `models` probe.
   # The wake of a hosted model and of a route stays `path-unknown`, and a Bedrock model has
   # neither route (scenarios status-*).
   # DECIDED 2026-11-25 (story:ollama-route): an Ollama model (`[hosted.<alias>]` of
@@ -722,7 +729,7 @@ entities:
       - {name: profile, type: 'Optional<String>'}
     lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
   # One entry of the status list (StatusRoute), keys in this order:
-  # `{"model","kind","wires","phase"?,"sub_phase"?,"profile"?,"callable"?}`. `model` is the
+  # `{"model","kind","wires","phase"?,"sub_phase"?,"profile"?,"callable"?,"reason"?}`. `model` is the
   # alias, `kind` its ModelKind, `wires` the wires the model declares (its upstream's, in their
   # declared order: `upstream_wires` of a ListedModel when the relay translates), then the keys
   # of its ModelStatus as LifecycleRoute renders them, and `callable`: whether a call sent now
@@ -736,6 +743,19 @@ entities:
   # `start_on_request` and `with_no_call_start` do not apply to it: it is `callable` by its
   # phase alone, `ready` and `stopped` `not-loaded` (a call loads the model) are `true`,
   # `unreachable` is `false`.
+  # DECIDED 2026-11-27 (story:hosted-status-probe): `reason`, on a `ready` entry only, is what
+  # the gateway's own record of the model's last relayed calls shows about the clients it
+  # serves. The record keeps per model the last `served-clients-calls-kept` (20) model calls a
+  # target answered (no token count): whether the client's `user-agent` names Claude Code (its
+  # product, before the first `/` or space, is `claude-cli`) and how the call was answered.
+  # When every kept call from Claude Code was answered 2xx, every kept call from another client
+  # `429` with an answer whose top-level `error` object has `type` `rate_limit_error`, and each
+  # side has at least `served-clients-min-calls` (2) calls, `reason` is
+  # `serves-claude-code-clients-only` and the entry stays `ready` and `callable`; any other
+  # record gives none. The dashboard's route row carries the same reason (docs/gateway.md,
+  # "The status list"). The record only reads: every call is relayed as it would be without it.
+  # Both bounds are published in docs/gateway.md "Bounds"; crates/llm-gateway/tests/served_clients.rs
+  # proves each side and a record too short to say anything.
   - name: llm-gateway.gateway.StatusEntry
     identity: {name: model, type: String}
     fields:
@@ -745,6 +765,7 @@ entities:
       - {name: sub_phase, type: 'Optional<String>'}
       - {name: profile, type: 'Optional<String>'}
       - {name: callable, type: 'Optional<Boolean>'}
+      - {name: reason, type: 'Optional<String>'}
     lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
   - name: llm-gateway.gateway.ExchangeObservation
     identity: {name: observation_id, type: String}

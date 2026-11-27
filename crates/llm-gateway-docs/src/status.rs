@@ -230,6 +230,20 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Relay",
+        "A status probe for an endpoint with no model list",
+        "A [hosted.<alias>] model on the messages wire may declare status_probe = \"count-tokens\": its status is then one POST <base path>/messages/count_tokens of a one-word message for its upstream_model, never a generation, read as the models probe is (ready on 2xx) within the same bounds. The default, status_probe = \"models\", is the GET <base path>/models probe unchanged. Tested against a fake endpoint on loopback that fails on any other request.",
+        "crates/llm-gateway-cli/tests/status_probe.rs::status_probe_count_tokens_is_one_post_of_a_one_word_message_and_nothing_else",
+        DOCUMENT,
+    ),
+    shipped(
+        "Relay",
+        "Which clients a model serves",
+        "GET /v1/status keeps a ready model ready and adds the reason serves-claude-code-clients-only, and the dashboard's route row says reachable, serves Claude Code clients only, when the gateway's own record of the model's last 20 relayed calls holds at least 2 from Claude Code, all answered 2xx, and at least 2 from other clients, all answered 429 rate_limit_error. Every call is still relayed unchanged. Tested against an in-process fake target, not against a real endpoint.",
+        "crates/llm-gateway/tests/served_clients.rs::served_clients_claude_code_answered_and_others_rate_limited_adds_the_reason",
+        GATEWAY,
+    ),
+    shipped(
+        "Relay",
         "A model on a local Ollama server",
         "A [hosted.<alias>] table with kind = \"ollama\" is relayed to the Ollama server's own chat, responses and messages paths, sent no credential. Its status is read from GET /api/tags and GET /api/ps: ready, stopped not-loaded (a call loads it), unreachable model-not-pulled or no-answer. A call to a model that is not pulled is refused 503 model-not-pulled naming the alias, and the gateway never asks the server to pull, create, copy, delete or push. Tested against a fake Ollama on loopback, not against an Ollama server.",
         "crates/llm-gateway-cli/tests/wake_status.rs::ollama_the_binary_sends_the_server_only_its_lists_and_the_wire_calls",

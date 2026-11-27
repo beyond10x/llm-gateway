@@ -23,7 +23,10 @@
 //! A hosted model's status (story:route-status-for-every-model) is one probe of its endpoint,
 //! the request `credential set` sends ([`HostedEndpoint::probe_within`]), sent only when a
 //! status is asked, within [`ProbeBounds::timeout`], its result reused for
-//! [`ProbeBounds::reuse`] and never two at once for one model ([`HostedTargets`]).
+//! [`ProbeBounds::reuse`] and never two at once for one model ([`HostedTargets`]). A model that
+//! declares `status_probe = "count-tokens"` (story:hosted-status-probe) is probed with a token
+//! count of one word instead ([`HostedEndpoint::with_count_tokens_probe`]), within the same
+//! bounds.
 
 use crate::{
     config::{Deployment, Hosted, Wire},
@@ -188,6 +191,9 @@ pub struct HostedEndpoint {
     /// The model name an Ollama server lists, when the endpoint is an Ollama server's
     /// (story:ollama-route): its status is read from the server's lists, not from `/v1/models`.
     ollama: Option<String>,
+    /// The model a `count-tokens` status probe names (story:hosted-status-probe): its status is
+    /// a token count of one word, not `/v1/models`.
+    count_tokens: Option<String>,
 }
 
 /// What a checked base URL names: how the endpoint is reached, its authority, and the base path
@@ -260,6 +266,7 @@ impl HostedEndpoint {
             headers: Vec::new(),
             opencode_go,
             ollama: None,
+            count_tokens: None,
         })
     }
 
@@ -286,6 +293,16 @@ impl HostedEndpoint {
         self
     }
 
+    /// The endpoint, probed for its status with a token count of one word for `model`
+    /// (`status_probe = "count-tokens"`, story:hosted-status-probe): `POST <base
+    /// path>/messages/count_tokens` in place of `GET <base path>/models`, for an endpoint that
+    /// answers model calls and no model list. The probe asks for no generation.
+    #[must_use]
+    pub fn with_count_tokens_probe(mut self, model: &str) -> Self {
+        self.count_tokens = Some(model.to_owned());
+        self
+    }
+
     /// The `host[:port]` requests are sent to and named by.
     pub fn authority(&self) -> &str {
         &self.authority
@@ -306,7 +323,9 @@ impl HostedEndpoint {
     /// endpoint carries it, `accept: application/json` and `connection: close`, over `tls` for
     /// `https` and plain TCP for `http`. The whole probe ends within [`PROBE_TOTAL`]; each connect,
     /// read and write is also bounded by [`PROBE_TIMEOUT`]. Interim `1xx` answers and their
-    /// headers are skipped; returns the first final status, nothing past its line is read.
+    /// headers are skipped; returns the first final status, nothing past its line is read. An
+    /// endpoint built [`Self::with_count_tokens_probe`] sends its token count instead
+    /// ([`Self::probe_request`]); `credential set` builds none.
     ///
     /// # Errors
     /// The connection's own error, `TimedOut` past the total, or `InvalidData` for an answer that
@@ -406,13 +425,19 @@ impl HostedEndpoint {
     /// The probe's request, which carries the endpoint's credential. It is written into one
     /// allocation of exactly its length, taken before the credential is written into it, so it
     /// never reallocates and leaves no copy of the key in freed memory, and it is overwritten
-    /// when dropped, as the relay's own request head is.
+    /// when dropped, as the relay's own request head is. A `count-tokens` endpoint's
+    /// (story:hosted-status-probe) is `POST <base path>/messages/count_tokens` of
+    /// [`count_tokens_body`], with `anthropic-version` unless a static header names it.
     fn probe_request(&self) -> Wiped {
-        let path = self.base_path.as_ref().map_or_else(
-            || PROBE_WIRE_PATH.to_owned(),
-            |base| base.join(PROBE_WIRE_PATH),
-        );
-        let mut start = format!("GET {path} HTTP/1.1\r\nhost: {}\r\n", self.authority);
+        let (method, wire_path) = match self.count_tokens {
+            Some(_) => ("POST", COUNT_TOKENS_WIRE_PATH),
+            None => ("GET", PROBE_WIRE_PATH),
+        };
+        let path = self
+            .base_path
+            .as_ref()
+            .map_or_else(|| wire_path.to_owned(), |base| base.join(wire_path));
+        let mut start = format!("{method} {path} HTTP/1.1\r\nhost: {}\r\n", self.authority);
         for header in &self.headers {
             let _written = write!(start, "{}: {}\r\n", header.name(), header.value());
         }
@@ -425,16 +450,44 @@ impl HostedEndpoint {
                 [header.as_str().as_bytes(), b": ", key.expose(), b"\r\n"]
             }
         };
-        let end = b"accept: application/json\r\nconnection: close\r\n\r\n";
-        let length =
-            start.len() + credential.iter().map(|piece| piece.len()).sum::<usize>() + end.len();
+        let (end, body) = match &self.count_tokens {
+            None => (
+                "accept: application/json\r\nconnection: close\r\n\r\n".to_owned(),
+                String::new(),
+            ),
+            Some(model) => {
+                let body = count_tokens_body(model);
+                let version = if self
+                    .headers
+                    .iter()
+                    .any(|header| header.name() == ANTHROPIC_VERSION_HEADER)
+                {
+                    String::new()
+                } else {
+                    format!("{ANTHROPIC_VERSION_HEADER}: {ANTHROPIC_VERSION}\r\n")
+                };
+                (
+                    format!(
+                        "{version}accept: application/json\r\ncontent-type: application/json\r\n\
+                         content-length: {}\r\nconnection: close\r\n\r\n",
+                        body.len()
+                    ),
+                    body,
+                )
+            }
+        };
+        let length = start.len()
+            + credential.iter().map(|piece| piece.len()).sum::<usize>()
+            + end.len()
+            + body.len();
         let mut request = Wiped::with_capacity(length);
         let sized = request.capacity();
         request.extend(start.as_bytes());
         for piece in credential {
             request.extend(piece);
         }
-        request.extend(end);
+        request.extend(end.as_bytes());
+        request.extend(body.as_bytes());
         debug_assert_eq!(
             request.capacity(),
             sized,
@@ -645,6 +698,21 @@ pub const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 pub const PROBE_TOTAL: Duration = Duration::from_secs(30);
 /// The wire path the probe asks for, which a base path replaces the leading `/v1` of.
 const PROBE_WIRE_PATH: &str = "/v1/models";
+/// The wire path a `count-tokens` probe posts to (story:hosted-status-probe).
+const COUNT_TOKENS_WIRE_PATH: &str = "/v1/messages/count_tokens";
+/// The one word a `count-tokens` probe counts.
+const COUNT_TOKENS_WORD: &str = "ping";
+/// The Messages API version header a `count-tokens` probe carries unless a static header names
+/// it, and the version it names.
+const ANTHROPIC_VERSION_HEADER: &str = "anthropic-version";
+const ANTHROPIC_VERSION: &str = "2023-06-01";
+
+/// A `count-tokens` probe's body: one user message of [`COUNT_TOKENS_WORD`] for `model`, the
+/// model written as a JSON string.
+fn count_tokens_body(model: &str) -> String {
+    let model = serde_json::Value::from(model).to_string();
+    format!(r#"{{"model":{model},"messages":[{{"role":"user","content":"{COUNT_TOKENS_WORD}"}}]}}"#)
+}
 /// The most interim `1xx` answers the probe skips.
 const MAX_INTERIM_ANSWERS: usize = 16;
 /// The most header bytes of one interim answer.
@@ -1228,6 +1296,13 @@ pub(crate) fn hosted_endpoints(
         let endpoint = match hosted.kind {
             crate::config::HostedKind::Endpoint => endpoint,
             crate::config::HostedKind::Ollama => endpoint.with_ollama(&hosted.upstream_model),
+        };
+        // A model that names the count-tokens probe (story:hosted-status-probe).
+        let endpoint = match hosted.status_probe {
+            crate::config::StatusProbe::Models => endpoint,
+            crate::config::StatusProbe::CountTokens => {
+                endpoint.with_count_tokens_probe(&hosted.upstream_model)
+            }
         };
         endpoints.insert(alias.clone(), endpoint);
     }
@@ -2103,5 +2178,106 @@ mod tests {
             (bounds.timeout, bounds.reuse),
             (Duration::from_secs(5), Duration::from_secs(10))
         );
+    }
+
+    // --- The count-tokens probe (story:hosted-status-probe) --------------------------------
+
+    /// Acceptance 2: a `count-tokens` probe keeps the probe's deadline. An answer inside it is
+    /// read; one that does not arrive is `no-answer` once the deadline has passed, and no later.
+    #[test]
+    fn route_status_a_count_tokens_probe_not_answered_inside_its_deadline_is_no_answer_at_the_deadline()
+     {
+        let deadline = Duration::from_millis(600);
+        let ok = Some("HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\n{}");
+        for (delay, expected) in [
+            (
+                Duration::from_millis(200),
+                ModelStatus::new(ModelPhase::Ready),
+            ),
+            (Duration::from_millis(1200), unreachable("no-answer")),
+        ] {
+            let (address, server) = endpoint_once(ok, delay);
+            let endpoint = HostedEndpoint::new(&format!("http://{address}/v1"), bearer())
+                .unwrap()
+                .with_count_tokens_probe("vendor-model");
+            let targets = targets("m", endpoint, fresh(deadline));
+            let started = Instant::now();
+            assert_eq!(targets.status("m"), Some(expected), "{delay:?}");
+            let took = started.elapsed();
+            assert!(took < deadline + Duration::from_millis(500), "{took:?}");
+            if delay > deadline {
+                assert!(took >= deadline, "{took:?}");
+            }
+            let head = server.join().unwrap();
+            assert!(
+                head.starts_with("POST /v1/messages/count_tokens HTTP/1.1\r\n"),
+                "{head}"
+            );
+        }
+    }
+
+    /// The `count-tokens` probe's request, key included, is written into one allocation taken
+    /// before its first byte, of exactly its length, body included, and reads zero as it is let
+    /// go, as the `models` probe's is. Its body names the model as JSON, escapes and all.
+    #[test]
+    fn a_count_tokens_probe_request_is_sized_before_its_key_is_written_and_overwritten_when_dropped()
+     {
+        const KEY: &str = "sk-probe-0123456789abcdef0123456789abcdef";
+        let key = || TargetBearer::new(KEY.as_bytes().to_vec()).unwrap();
+        let body =
+            r#"{"model":"vendor/model \"x\"","messages":[{"role":"user","content":"ping"}]}"#;
+        for (credential, line, version) in [
+            (
+                EndpointCredential::Bearer(key()),
+                format!("authorization: Bearer {KEY}\r\n"),
+                "anthropic-version: 2023-06-01\r\n",
+            ),
+            (
+                EndpointCredential::ApiKey {
+                    header: CredentialHeader::new("x-api-key").unwrap(),
+                    key: key(),
+                },
+                format!("x-api-key: {KEY}\r\n"),
+                "anthropic-version: 2023-06-01\r\n",
+            ),
+            (EndpointCredential::Anonymous, String::new(), ""),
+        ] {
+            let declared = matches!(credential, EndpointCredential::Anonymous);
+            let mut headers = vec![StaticHeader::new("x-team", "blue").unwrap()];
+            if declared {
+                headers.push(StaticHeader::new("anthropic-version", "2023-01-01").unwrap());
+            }
+            let endpoint = HostedEndpoint::new("https://models.example.test/proxy", credential)
+                .unwrap()
+                .with_headers(headers)
+                .unwrap()
+                .with_count_tokens_probe("vendor/model \"x\"");
+            ledger::drain();
+            let request = endpoint.probe_request();
+            let statics = if declared {
+                "x-team: blue\r\nanthropic-version: 2023-01-01\r\n"
+            } else {
+                "x-team: blue\r\n"
+            };
+            assert_eq!(
+                String::from_utf8_lossy(request.as_slice()),
+                format!(
+                    "POST /proxy/messages/count_tokens HTTP/1.1\r\nhost: models.example.test\r\n\
+                     {statics}{line}{version}accept: application/json\r\n\
+                     content-type: application/json\r\ncontent-length: {}\r\n\
+                     connection: close\r\n\r\n{body}",
+                    body.len()
+                )
+            );
+            let (address, size) = (request.as_slice().as_ptr().addr(), request.capacity());
+            assert_eq!(size, request.as_slice().len(), "{line:?}");
+            assert_eq!(ledger::drain(), [Entry::Taken(address, size)], "{line:?}");
+            drop(request);
+            assert_eq!(
+                ledger::drain(),
+                [Entry::Released(address, size, true)],
+                "{line:?}"
+            );
+        }
     }
 }

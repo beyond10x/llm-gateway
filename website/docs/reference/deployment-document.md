@@ -324,7 +324,7 @@ name instead of a second pod.
 
 | Key | Default | Rule |
 | --- | --- | --- |
-| `model` | required | The alias of a `[models.<alias>]` model. A hosted model, another alias or a name nothing declares is `config:value` naming `aliases.<alias>.model`. |
+| `model` | required | The alias of a `[models.<alias>]` model whose `wires` include `messages`. A hosted model, another alias, a name nothing declares or a model without the `messages` wire is `config:value` naming `aliases.<alias>.model`. |
 | `effort` | required | `none`, the only value. Any other is `config:value` naming `aliases.<alias>.effort`. |
 
 A missing key, any other key or a value that is not a string is `config:schema`. The alias
@@ -334,7 +334,10 @@ follows the provider-name rule and is not also a `[models.*]` or `[hosted.*]` al
 The alias is relayed as its model: the same wires, tool calling, windows, token price and
 `start_on_request`, and sent to the pod under the model's alias. It has no pod of its own: a
 call to it, its wake and its status take the model's pod, so a call to either name starts or
-waits on the one pod, and a pod start is counted once. On the Messages wire
+waits on the one pod, and a pod start is counted once. The watchdog counts a call to the alias
+as activity of the model's pod, and `/v1/routes/<alias>` lists the model's targets. A model
+without the `messages` wire would have the alias's Messages requests translated, and a
+translated request carries no forced effort, so such an alias is refused. On the Messages wire
 every request to it reaches the pod with each `output_config.effort` set to `null` and
 `chat_template_kwargs` holding `"enable_thinking":false`, whatever effort or
 `chat_template_kwargs` it sent; the model's own name is relayed exactly as without the alias.

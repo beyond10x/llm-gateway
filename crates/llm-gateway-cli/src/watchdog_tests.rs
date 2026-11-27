@@ -305,7 +305,7 @@ fn the_watchdog_table_has_its_defaults_and_refuses_values_outside_its_ranges() {
 fn adversary_alias_a_pod_busy_under_its_alias_is_not_terminated_as_idle() {
     let text = format!(
         "{}\n[aliases.small-plain]\nmodel = \"small\"\neffort = \"none\"\n",
-        document(30, "")
+        document(30, "").replacen("wires = [\"chat\"]", "wires = [\"chat\", \"messages\"]", 1)
     );
     let deployment = crate::parse(&text).unwrap();
     let config = deployment.watchdog.clone().unwrap();
@@ -325,4 +325,41 @@ fn adversary_alias_a_pod_busy_under_its_alias_is_not_terminated_as_idle() {
         "a call to the alias is in flight on the pod"
     );
     assert!(runpod.terminations().is_empty());
+}
+
+/// The alias's activity counts for its model's pod both ways: a recent call ended under the
+/// alias keeps the pod, and with the model and the alias both idle past the limit it goes.
+#[test]
+fn alias_a_recent_call_to_the_alias_keeps_the_pod_and_both_idle_terminate_it() {
+    let text = format!(
+        "{}\n[aliases.small-plain]\nmodel = \"small\"\neffort = \"none\"\n",
+        document(30, "").replacen("wires = [\"chat\"]", "wires = [\"chat\", \"messages\"]", 1)
+    );
+    let deployment = crate::parse(&text).unwrap();
+    let config = deployment.watchdog.clone().unwrap();
+    let mut watch = Watch::new(&deployment, &config);
+    let mut runpod = EmulatedRunpod::new();
+    let id = own_pod(&runpod, 2 * HOUR);
+    let recent = beat(
+        1_000,
+        vec![
+            ("small", Some(NOW - HOUR), 0),
+            ("small-plain", Some(NOW - MINUTE), 0),
+        ],
+    );
+    assert_eq!(
+        reasons(&watch.poll(&mut runpod, Some(&recent), NOW)),
+        vec![]
+    );
+    let idle = beat(
+        1_000,
+        vec![
+            ("small", Some(NOW - HOUR), 0),
+            ("small-plain", Some(NOW - HOUR), 0),
+        ],
+    );
+    assert_eq!(
+        reasons(&watch.poll(&mut runpod, Some(&idle), NOW)),
+        vec![(id, Reason::Idle)]
+    );
 }

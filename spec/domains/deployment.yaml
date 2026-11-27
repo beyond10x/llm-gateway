@@ -379,9 +379,11 @@ types:
   # (`high` by default, never `none`), so every structured step thought up to its output cap
   # and answered no JSON. The alias turns thinking off for its requests while the model keeps
   # it, on one pod. Keys:
-  #   model   required: the alias of a `[models.<alias>]` model. Anything else, a `[hosted.*]`
-  #           model, another `[aliases.*]` entry or a name nothing declares, is `config:value`
-  #           naming `aliases.<alias>.model`
+  #   model   required: the alias of a `[models.<alias>]` model whose `wires` include
+  #           `messages`. Anything else, a `[hosted.*]` model, another `[aliases.*]` entry, a
+  #           name nothing declares or a model without the messages wire (its Messages
+  #           requests would be translated, and a translated request carries no forced
+  #           effort), is `config:value` naming `aliases.<alias>.model`
   #   effort  required, read as a string: `none` (ForcedEffort); any other value is
   #           `config:value` naming `aliases.<alias>.effort`
   # The alias follows the provider-name rule and names no `[models.*]` or `[hosted.*]` alias and
@@ -392,9 +394,13 @@ types:
   # model's alias, the name its pod serves (`--served-model-name`). It has no pod, Runpod
   # secret, hosting slot or watchdog entry of its own: a call to it, its wake and its status
   # take the aliased model's pod from the same pool, so a call to either name wakes or holds the
-  # one pod, and a pod start is counted once, under the aliased model. The aliased model is
-  # relayed exactly as without the alias. Proved by `alias_*` in
-  # crates/llm-gateway-cli/tests/config.rs and crates/llm-gateway-cli/tests/relaying.rs.
+  # one pod, and a pod start is counted once, under the aliased model. The heartbeat reports a
+  # call to the alias under the alias, and the watchdog counts it as activity of the aliased
+  # model's pod: in flight under either name, the pod is busy; idle means idle under both. The
+  # inspection inventory lists the alias as a route of the aliased model's targets. The aliased
+  # model is relayed exactly as without the alias. Proved by `alias_*` and `adversary_alias_*`
+  # in crates/llm-gateway-cli/tests/config.rs, crates/llm-gateway-cli/tests/relaying.rs and
+  # crates/llm-gateway-cli/src/watchdog_tests.rs.
   - name: llm-gateway.deployment.AliasDeclaration
     kind: struct
     fields:

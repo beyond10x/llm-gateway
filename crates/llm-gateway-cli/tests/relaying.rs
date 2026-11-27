@@ -1269,7 +1269,35 @@ fn alias_its_wake_and_status_are_the_aliased_models() {
     let again = lifecycle(address, "POST", "small", "wake");
     let small = lifecycle(address, "GET", "small", "status");
     let plain = lifecycle(address, "GET", "small-plain", "status");
+    let route = |alias: &str| {
+        let mut stream = TcpStream::connect(address).unwrap();
+        stream.set_read_timeout(Some(WAIT)).unwrap();
+        write!(
+            stream,
+            "GET /v1/routes/{alias} HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER_SECRET}\r\nconnection: close\r\n\r\n"
+        )
+        .unwrap();
+        let mut raw = String::new();
+        stream.read_to_string(&mut raw).unwrap();
+        raw
+    };
+    let (small_route, plain_route) = (route("small"), route("small-plain"));
     running.shutdown();
+    assert!(plain_route.starts_with("HTTP/1.1 200 "), "{plain_route}");
+    let targets = |raw: &str| {
+        let body = raw.split_once("\r\n\r\n").unwrap().1;
+        serde_json::from_str::<serde_json::Value>(body).unwrap()["route"]["targets"].clone()
+    };
+    assert_eq!(
+        targets(&plain_route),
+        targets(&small_route),
+        "the alias is a route of its model's targets"
+    );
+    assert!(
+        targets(&plain_route)
+            .as_array()
+            .is_some_and(|t| !t.is_empty())
+    );
     assert!(before.contains("\"phase\":\"stopped\""), "{before}");
     assert!(woken.starts_with("HTTP/1.1 202 "), "{woken}");
     assert!(woken.contains("\"phase\":\"starting\""), "{woken}");

@@ -1005,7 +1005,9 @@ entities:
   #      `"chat_template_kwargs":{"enable_thinking":false}` as its last top-level member. The
   #      forced value wins in every case: the model's declared effort is never inserted, and
   #      the W4 mapping still applies to `chat_template_kwargs.reasoning_effort`, which the
-  #      template no longer reads. The chat and responses wires are relayed as before.
+  #      template no longer reads. The chat and responses wires are relayed as before, and a
+  #      messages request translated to another wire carries no forced effort, so the binary
+  #      refuses an alias of a model without the messages wire at start.
   #      DECIDED 2026-11-27: the literal `"effort":"none"` would fail the turn, because vLLM
   #      v0.27.1's messages request model admits only `low|medium|high|xhigh|max` or null
   #      there (vllm/entrypoints/anthropic/protocol.py line 114); `null` leaves vLLM's

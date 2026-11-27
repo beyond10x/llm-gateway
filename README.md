@@ -165,9 +165,9 @@ names a model's `vllm_api_key`, a hosted model's `credential` and a route endpoi
 `auth.secret` in place of a file
 ([keychain references](https://beyond10x.github.io/llm-gateway/docs/reference/deployment-document/#keychain-references)).
 
-An `[aliases.<alias>]` table, `model = "<a [models.<alias>]>"` and `effort = "none"`, gives
-that model a second name served by the same pod, whose Messages requests reach it with thinking
-off whatever effort they name
+An `[aliases.<alias>]` table, `model = "<a [models.<alias>] on the messages wire>"` and
+`effort = "none"`, gives that model a second name served by the same pod, whose Messages
+requests reach it with thinking off whatever effort they name
 ([aliases](https://beyond10x.github.io/llm-gateway/docs/reference/deployment-document/#aliases)).
 
 A `[hosted.<alias>]` table serves a model from a hosted endpoint instead of a pod: `wires`,

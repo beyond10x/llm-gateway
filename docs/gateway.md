@@ -502,7 +502,9 @@ A request to a wire path is decided in this order:
    `"chat_template_kwargs":{"enable_thinking":false}` as its last top-level member. The forced
    value wins over both rules above: the model's declared effort is never inserted, and the
    `high`/`max` mapping still rewrites `chat_template_kwargs.reasoning_effort`, which the
-   template no longer reads. The chat and responses wires are relayed as without it. The
+   template no longer reads. The chat and responses wires are relayed as without it, and a
+   messages request translated to another wire carries no forced effort, so the binary refuses
+   an alias of a model without the messages wire at start. The
    literal `"effort":"none"` would fail the turn: vLLM v0.27.1's messages request admits only
    `low`, `medium`, `high`, `xhigh`, `max` or `null` there
    (`vllm/entrypoints/anthropic/protocol.py` line 114), and `null` leaves its

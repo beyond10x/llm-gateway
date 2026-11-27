@@ -2941,9 +2941,18 @@ fn ollama_a_credential_another_auth_kind_or_a_bedrock_key_is_refused_naming_the_
 
 // --- `[aliases.<alias>]`: a second name of a Runpod model with a forced effort ----------------
 
+/// The support document with `small` on the messages wire too: an alias needs it.
+fn messages_base(fixture: &Fixture) -> String {
+    mutate(
+        &base(fixture),
+        "wires = [\"chat\", \"responses\"]\n",
+        "wires = [\"chat\", \"responses\", \"messages\"]\n",
+    )
+}
+
 /// The support document with `[aliases.<alias>]` holding `lines` appended.
 fn with_alias(fixture: &Fixture, alias: &str, lines: &str) -> String {
-    format!("{}\n[aliases.{alias}]\n{lines}", base(fixture))
+    format!("{}\n[aliases.{alias}]\n{lines}", messages_base(fixture))
 }
 
 /// An alias of a `[models.*]` model with `effort = "none"` loads as that model's second name;
@@ -2951,7 +2960,7 @@ fn with_alias(fixture: &Fixture, alias: &str, lines: &str) -> String {
 #[test]
 fn alias_of_a_runpod_model_with_effort_none_loads_and_declares_no_second_model() {
     let fixture = Fixture::new("alias-loads");
-    let without = load(&fixture.config(&base(&fixture))).unwrap();
+    let without = load(&fixture.config(&messages_base(&fixture))).unwrap();
     assert!(without.aliases.is_empty());
     let text = with_alias(
         &fixture,
@@ -2993,7 +3002,7 @@ fn alias_refuses_an_unknown_model_an_alias_of_an_alias_and_any_effort_but_none()
         let text = format!(
             "{}\n{hosted}\n[aliases.small-plain]\nmodel = \"small\"\neffort = \"none\"\n\n\
              [aliases.other]\nmodel = \"{model}\"\neffort = \"none\"\n",
-            base(&fixture)
+            messages_base(&fixture)
         );
         value(&text, "aliases.other.model");
     }
@@ -3009,7 +3018,7 @@ fn alias_refuses_an_unknown_model_an_alias_of_an_alias_and_any_effort_but_none()
     }
     let text = format!(
         "{}\n{hosted}\n[aliases.remote]\nmodel = \"small\"\neffort = \"none\"\n",
-        base(&fixture)
+        messages_base(&fixture)
     );
     value(&text, "aliases.remote");
     value(
@@ -3033,6 +3042,34 @@ fn alias_refuses_an_unknown_model_an_alias_of_an_alias_and_any_effort_but_none()
     ] {
         let refusal = refused(&with_alias(&fixture, "small-plain", lines));
         assert_eq!(refusal.code(), "config:schema", "{lines:?}: {refusal}");
+    }
+}
+
+/// Adversary (story:model-alias-thinking-off), turned into a start refusal. A messages request
+/// to a model whose `wires` lack `messages` is translated, and the translator carries no forced
+/// effort: the pod would be sent the client's effort with thinking on. Such an alias is refused
+/// at start, naming the alias and its model (`config:value`).
+#[test]
+fn adversary_alias_of_a_model_without_the_messages_wire_is_refused_at_start() {
+    let fixture = Fixture::new("alias-no-messages");
+    for wires in ["[\"chat\", \"responses\"]", "[\"chat\"]", "[\"responses\"]"] {
+        let text = format!(
+            "{}\n[aliases.small-plain]\nmodel = \"small\"\neffort = \"none\"\n",
+            mutate(
+                &base(&fixture),
+                "wires = [\"chat\", \"responses\"]\n",
+                &format!("wires = {wires}\n"),
+            )
+        );
+        let refusal = load(&fixture.config(&text)).unwrap_err();
+        assert_eq!(refusal.code(), "config:value", "{wires}: {refusal}");
+        let said = refusal.to_string();
+        assert!(
+            said.contains("aliases.small-plain.model")
+                && said.contains("names small,")
+                && said.contains("messages"),
+            "{wires}: {refusal}"
+        );
     }
 }
 

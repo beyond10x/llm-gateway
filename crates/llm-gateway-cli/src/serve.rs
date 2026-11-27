@@ -502,6 +502,28 @@ fn scrape_token(mut material: Vec<u8>) -> Result<OwnerToken, Refusal> {
     OwnerToken::new(material).map_err(|error| refuse(&error))
 }
 
+/// `routes` with one route per `[aliases.<alias>]`: its model's targets under the alias, since
+/// a call to the alias reaches the model's pod. Called by [`crate::hosted::routes`]; kept at
+/// the end of this file so that no cited line moves.
+pub(crate) fn aliased(
+    deployment: &Deployment,
+    mut routes: Vec<RouteSummary>,
+) -> Result<Vec<RouteSummary>, Refusal> {
+    for (alias, declared) in &deployment.aliases {
+        let Some(model) = routes
+            .iter()
+            .find(|route| route.alias().as_str() == declared.model)
+        else {
+            continue;
+        };
+        let targets = model.targets().to_vec();
+        let route = RouteSummary::new(label(alias)?, label(alias)?, false, targets)
+            .map_err(|error| inventory_refusal(&error))?;
+        routes.push(route);
+    }
+    Ok(routes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::owner_verifier;

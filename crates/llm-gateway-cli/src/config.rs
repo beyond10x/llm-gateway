@@ -1384,10 +1384,21 @@ fn alias_tables(
             &at,
             "names an alias [models.*] or [hosted.*] already declares",
         )?;
+        let model = models.get(&declared.model).ok_or_else(|| {
+            value(
+                &format!("{at}.model"),
+                "must name a [models.*] model, not a hosted model or another alias",
+            )
+        })?;
+        // A messages request to a model without the messages wire is translated, and the
+        // translator carries no forced effort: the pod would think.
         ensure(
-            models.contains_key(&declared.model),
+            model.wires.contains(&Wire::Messages),
             &format!("{at}.model"),
-            "must name a [models.*] model, not a hosted model or another alias",
+            &format!(
+                "names {}, whose wires lack messages: the forced effort holds only on the messages wire",
+                declared.model
+            ),
         )?;
         let effort = ForcedEffort::from_name(&declared.effort)
             .ok_or_else(|| value(&format!("{at}.effort"), "must be none"))?;

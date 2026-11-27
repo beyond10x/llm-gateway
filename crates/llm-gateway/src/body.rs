@@ -1,20 +1,25 @@
 //! Reading a relayed request body as JSON without deserialising it.
 //!
 //! The relay changes at most three string values of a body (rows W2 and W4), may add one
-//! `output_config.effort` member (a model's declared effort), may lower its top-level
-//! `max_tokens` (the output clamp), and must pass every other byte through unchanged. So the
-//! body is scanned, not parsed into a tree: the scan validates the whole document against RFC
-//! 8259, records where the values it may rewrite lie, whether the body names an effort and where
-//! one would be added, where a top-level integer `max_tokens` lies, and whether a top-level
-//! `tools` array is non-empty (the tool-calling refusal). The rewrite then replaces exactly those
-//! byte ranges and inserts at most that one member. The same scan reads the `input_tokens` of a
-//! target's count answer ([`input_tokens`]).
+//! `output_config.effort` member (a model's declared effort), or, for a model that forces the
+//! effort `none`, writes thinking off over every top-level `output_config.effort` and
+//! `chat_template_kwargs`; it may lower its top-level `max_tokens` (the output clamp), and must
+//! pass every other byte through unchanged. So the body is scanned, not parsed into a tree: the
+//! scan validates the whole document against RFC 8259, records where the values it may rewrite
+//! lie, whether the body names an effort and where one would be added, where a top-level integer
+//! `max_tokens` lies, and whether a top-level `tools` array is non-empty (the tool-calling
+//! refusal). The rewrite then replaces exactly those byte ranges and inserts only those members.
+//! The same scan reads the `input_tokens` of a target's count answer ([`input_tokens`]).
 //!
 //! The scan keeps its nesting on an explicit stack rather than the call stack, so a body that is
 //! nothing but `[[[[…` costs memory bounded by the body bound and cannot overflow a thread's
 //! stack.
 
-use crate::{error::RefusalCode, json::Writer, relay::ReasoningEffort};
+use crate::{
+    error::RefusalCode,
+    json::Writer,
+    relay::{ForcedEffort, ReasoningEffort},
+};
 use std::ops::Range;
 
 /// The client efforts the served chat template rejects: `high` (llmgw `src/lib.rs:37`) and
@@ -23,6 +28,22 @@ use std::ops::Range;
 const CLIENT_EFFORTS: [&str; 2] = ["high", "max"];
 /// The template's nearest accepted depth, written as a JSON string (llmgw `src/lib.rs:39`).
 const SERVED_EFFORT: &str = "\"xhigh\"";
+/// What a forced `none` writes over an `output_config.effort`: vLLM v0.27.1 takes `null` there
+/// and sets no `reasoning_effort` (`vllm/entrypoints/anthropic/protocol.py` line 114,
+/// `serving.py` lines 513-514), and refuses the literal `"none"`.
+const NO_EFFORT: &str = "null";
+/// The `chat_template_kwargs` member that turns the Qwen3.8 template's thinking off
+/// (`chat_template.jinja` lines 46 and 165-166), which vLLM v0.27.1 keeps whatever the effort
+/// (`vllm/entrypoints/openai/chat_completion/protocol.py` lines 571-573).
+const THINKING_OFF: &str = "\"enable_thinking\":false";
+/// That member's value, written over an `enable_thinking` the body names.
+const THINKING_OFF_VALUE: &str = "false";
+/// A `chat_template_kwargs` holding only [`THINKING_OFF`].
+const THINKING_OFF_OBJECT: &str = "{\"enable_thinking\":false}";
+/// A last top-level member holding only that object.
+const THINKING_OFF_MEMBER: &str = ",\"chat_template_kwargs\":{\"enable_thinking\":false}";
+/// [`THINKING_OFF`] added after an object's last member.
+const THINKING_OFF_AFTER: &str = ",\"enable_thinking\":false";
 
 /// What the relay needs to know about a body that is one JSON object.
 #[derive(Debug, PartialEq, Eq)]
@@ -46,6 +67,10 @@ pub(crate) struct Analysis {
     /// The top-level `max_tokens` when the body names it once and it is one non-negative JSON
     /// integer: where its token lies, and its value (`u64::MAX` past `u64`).
     max_tokens: Option<(Range<usize>, u64)>,
+    /// What a forced `none` writes, each byte range with what replaces it (an empty range
+    /// inserts): `null` over every top-level `output_config.effort` value, and thinking off in
+    /// every top-level `chat_template_kwargs`, or one added when the body names none.
+    thinking_off: Vec<(Range<usize>, &'static str)>,
 }
 
 /// A body as the relay rewrote it, with where its top-level integer `max_tokens` lies in it.
@@ -102,7 +127,7 @@ impl Analysis {
         map_effort: bool,
         declared: Option<ReasoningEffort>,
     ) -> Vec<u8> {
-        self.rewritten(body, upstream_model, map_effort, declared)
+        self.rewritten(body, upstream_model, map_effort, declared, None)
             .bytes
     }
 
@@ -114,18 +139,31 @@ impl Analysis {
         upstream_model: &str,
         map_effort: bool,
         declared: Option<ReasoningEffort>,
+        forced: Option<ForcedEffort>,
     ) -> Rewritten {
         let mut writer = Writer::new();
         writer.string(upstream_model);
         let model = writer.finish();
         let mut replacements: Vec<(Range<usize>, &[u8])> =
             vec![(self.model_span.clone(), model.as_bytes())];
+        // A forced effort wins over the declared one and over the mapping of the values it
+        // writes over (`docs/gateway.md` "The relay", step 6).
+        let written: &[(Range<usize>, &str)] = match forced {
+            Some(ForcedEffort::None) => &self.thinking_off,
+            None => &[],
+        };
+        for (span, value) in written {
+            replacements.push((span.clone(), value.as_bytes()));
+        }
         if map_effort {
             for span in &self.efforts {
-                replacements.push((span.clone(), SERVED_EFFORT.as_bytes()));
+                if !written.iter().any(|(over, _)| over == span) {
+                    replacements.push((span.clone(), SERVED_EFFORT.as_bytes()));
+                }
             }
         }
         let inserted = declared
+            .filter(|_| forced.is_none())
             .zip(self.effort_slot)
             .map(|(effort, slot)| match slot {
                 EffortSlot::Object { at, after_member } => {
@@ -141,9 +179,10 @@ impl Analysis {
             replacements.push((*at..*at, member.as_bytes()));
         }
         replacements.sort_by_key(|(span, _)| span.start);
-        // No replacement overlaps the `max_tokens` token (it is a number, every replaced value
-        // a string, and an insertion lands after a value or at a brace), so in the output it
-        // moves by what the replacements before it added or removed.
+        // No replacement overlaps the `max_tokens` token (it is a top-level number, every
+        // replaced value is the value of another member or lies inside one, and an insertion
+        // lands after a value or at a brace), so in the output it moves by what the
+        // replacements before it added or removed.
         let max_tokens = self.max_tokens.clone().map(|(span, value)| {
             let mut start = span.start;
             for (replaced, with) in &replacements {
@@ -187,6 +226,8 @@ enum Slot {
     OutputConfig,
     TemplateKwargs,
     Effort,
+    /// A top-level `chat_template_kwargs` object's `enable_thinking`.
+    Thinking,
     Tools,
     /// An element of the top-level `tools` array.
     Tool,
@@ -219,6 +260,7 @@ impl Slot {
             (Role::OutputConfig, "effort") | (Role::TemplateKwargs, "reasoning_effort") => {
                 Self::Effort
             }
+            (Role::TemplateKwargs, "enable_thinking") => Self::Thinking,
             (Role::Tool, "input_schema") => Self::ToolSchema,
             (Role::Tool, "type") => Self::ToolType,
             _ => Self::Other,
@@ -233,6 +275,7 @@ impl Slot {
             Self::Tool => Role::Tool,
             Self::Model
             | Self::Effort
+            | Self::Thinking
             | Self::Tools
             | Self::ToolSchema
             | Self::ToolType
@@ -294,6 +337,27 @@ struct Found {
     max_tokens: Integer,
     input_tokens: Integer,
     stream: Stream,
+    /// Each object or array still open, by the slot it is the value of and where it starts,
+    /// so a compound value's whole span is known when it closes.
+    open: Vec<(Slot, usize)>,
+    /// What a forced `none` writes ([`Analysis`]'s `thinking_off`), but the member a body
+    /// naming no `chat_template_kwargs` gains.
+    thinking_off: Vec<(Range<usize>, &'static str)>,
+    /// What the scan has seen of the top-level `chat_template_kwargs`.
+    template_kwargs: TemplateKwargs,
+}
+
+/// What the scan knows of the last top-level `chat_template_kwargs` it opened. Only top-level
+/// members are read, and one ends before the next starts, so no two are open at once.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum TemplateKwargs {
+    /// The top level names none.
+    #[default]
+    Absent,
+    /// An object, and whether it names `enable_thinking`.
+    Object { names_thinking: bool },
+    /// Any other value.
+    NotObject,
 }
 
 /// What the scan has seen of a request's top-level `stream` and `stream_options`
@@ -382,6 +446,35 @@ impl Found {
         if slot == Slot::OutputConfig && byte != Some(b'{') {
             self.output_config = OutputConfig::NotObject;
         }
+        if slot == Slot::TemplateKwargs {
+            self.template_kwargs = if byte == Some(b'{') {
+                TemplateKwargs::Object {
+                    names_thinking: false,
+                }
+            } else {
+                TemplateKwargs::NotObject
+            };
+        }
+    }
+
+    /// Notes that the whole value of `slot`, inside `parent`, lies at `span`: what a forced
+    /// `none` writes over it, if anything.
+    fn ended(&mut self, slot: Slot, span: Range<usize>, parent: Option<Frame>) {
+        match slot {
+            Slot::Effort if parent == Some(Frame::Object(Role::OutputConfig)) => {
+                self.thinking_off.push((span, NO_EFFORT));
+            }
+            Slot::Thinking => {
+                self.template_kwargs = TemplateKwargs::Object {
+                    names_thinking: true,
+                };
+                self.thinking_off.push((span, THINKING_OFF_VALUE));
+            }
+            Slot::TemplateKwargs if self.template_kwargs == TemplateKwargs::NotObject => {
+                self.thinking_off.push((span, THINKING_OFF_OBJECT));
+            }
+            _ => {}
+        }
     }
 
     /// Notes that the frame on top of `stack` closes. For an object, `at` is where a member
@@ -394,9 +487,42 @@ impl Found {
                         OutputConfig::Object(EffortSlot::Object { at, after_member });
                 }
             }
+            Some(Frame::Object(Role::TemplateKwargs))
+                if self.template_kwargs
+                    == (TemplateKwargs::Object {
+                        names_thinking: false,
+                    }) =>
+            {
+                let member = if after_member {
+                    THINKING_OFF_AFTER
+                } else {
+                    THINKING_OFF
+                };
+                self.thinking_off.push((at..at, member));
+            }
             Some(Frame::Object(_)) if stack.len() == 1 => self.top_end = Some(at),
             _ => {}
         }
+    }
+
+    /// Pops the frame on top of `stack`, whose closing byte is at `position`, and notes the
+    /// whole value it was.
+    fn pops(&mut self, stack: &mut Vec<Frame>, position: usize) {
+        stack.pop();
+        if let Some((slot, start)) = self.open.pop() {
+            self.ended(slot, start..position + 1, stack.last().copied());
+        }
+    }
+
+    /// What a forced `none` writes into the body whose top-level object this scan read.
+    fn thinking_off(&mut self) -> Vec<(Range<usize>, &'static str)> {
+        let mut written = std::mem::take(&mut self.thinking_off);
+        if self.template_kwargs == TemplateKwargs::Absent
+            && let Some(end) = self.top_end
+        {
+            written.push((end..end, THINKING_OFF_MEMBER));
+        }
+        written
     }
 
     /// Where a declared effort is written, or `None` when the body names one or its top-level
@@ -430,11 +556,13 @@ fn value_token(
     match byte {
         Some(b'{') => {
             found.value(slot, position..position + 1, b"{", None);
+            found.open.push((slot, position));
             stack.push(Frame::Object(slot.role()));
             Ok((position + 1, Next::FirstMember))
         }
         Some(b'[') => {
             found.value(slot, position..position + 1, b"[", None);
+            found.open.push((slot, position));
             found.tools_opened = slot == Slot::Tools;
             stack.push(Frame::Array(slot == Slot::Tools));
             Ok((position + 1, Next::FirstElement))
@@ -442,11 +570,13 @@ fn value_token(
         Some(b'"') => {
             let (end, value) = string(text, position)?;
             found.value(slot, position..end, &bytes[position..end], Some(value));
+            found.ended(slot, position..end, stack.last().copied());
             Ok((end, Next::AfterValue))
         }
         Some(_) => {
             let end = scalar(bytes, position)?;
             found.value(slot, position..end, &bytes[position..end], None);
+            found.ended(slot, position..end, stack.last().copied());
             Ok((end, Next::AfterValue))
         }
         None => Err(NOT_JSON),
@@ -460,11 +590,12 @@ fn value_token(
 /// names `model` twice at its top level; [`RefusalCode::ModelAbsent`] for an object whose
 /// top-level `model` is missing or not a string.
 pub(crate) fn analyse(body: &[u8]) -> Result<Analysis, RefusalCode> {
-    let found = scan(body)?;
+    let mut found = scan(body)?;
     if found.models > 1 {
         return Err(NOT_JSON);
     }
     let effort_slot = found.effort_slot();
+    let thinking_off = found.thinking_off();
     let (model_span, model) = found.model.ok_or(RefusalCode::ModelAbsent)?;
     Ok(Analysis {
         model,
@@ -474,6 +605,7 @@ pub(crate) fn analyse(body: &[u8]) -> Result<Analysis, RefusalCode> {
         offers_server_tool: found.tools.iter().any(server_tool),
         effort_slot,
         max_tokens: found.max_tokens.once(),
+        thinking_off,
     })
 }
 
@@ -549,7 +681,7 @@ fn scan(body: &[u8]) -> Result<Found, RefusalCode> {
             }
             Next::FirstMember if byte == Some(b'}') => {
                 found.closes(&stack, position, false);
-                stack.pop();
+                found.pops(&mut stack, position);
                 position += 1;
                 Next::AfterValue
             }
@@ -570,7 +702,7 @@ fn scan(body: &[u8]) -> Result<Found, RefusalCode> {
             }
             Next::FirstElement if byte == Some(b']') => {
                 found.tools_opened = false;
-                stack.pop();
+                found.pops(&mut stack, position);
                 position += 1;
                 Next::AfterValue
             }
@@ -590,7 +722,7 @@ fn scan(body: &[u8]) -> Result<Found, RefusalCode> {
                 }
                 (Some(Frame::Object(_)), Some(b'}')) | (Some(Frame::Array(_)), Some(b']')) => {
                     found.closes(&stack, value_end, true);
-                    stack.pop();
+                    found.pops(&mut stack, position);
                     position += 1;
                     Next::AfterValue
                 }
@@ -746,7 +878,10 @@ fn scalar(bytes: &[u8], start: usize) -> Result<usize, RefusalCode> {
 #[cfg(test)]
 mod tests {
     use super::{analyse, input_tokens};
-    use crate::{error::RefusalCode, relay::ReasoningEffort};
+    use crate::{
+        error::RefusalCode,
+        relay::{ForcedEffort, ReasoningEffort},
+    };
 
     fn model(body: &str) -> Result<String, RefusalCode> {
         analyse(body.as_bytes()).map(|analysis| analysis.model)
@@ -927,6 +1062,7 @@ mod tests {
                 "a-longer-upstream-name",
                 true,
                 Some(ReasoningEffort::Low),
+                None,
             );
             rewritten.clamp_max_tokens(room);
             (
@@ -972,6 +1108,58 @@ mod tests {
         assert_eq!(
             clamped(r#"{"model":"m","max_tokens":99999999999999999999999}"#, 5).1,
             r#"{"model":"a-longer-upstream-name","max_tokens":5,"output_config":{"effort":"low"}}"#
+        );
+    }
+
+    /// A forced `none` nulls every top-level `output_config.effort`, compound values included,
+    /// sets thinking off in every top-level `chat_template_kwargs`, inserts no declared effort,
+    /// and the output clamp still finds `max_tokens` after edits that shrink and grow the body.
+    #[test]
+    fn a_forced_none_is_written_over_any_effort_and_the_clamp_still_finds_max_tokens() {
+        let forced = |body: &str, room: u64| {
+            let analysis = analyse(body.as_bytes()).unwrap();
+            let mut rewritten = analysis.rewritten(
+                body.as_bytes(),
+                "up",
+                true,
+                Some(ReasoningEffort::Low),
+                Some(ForcedEffort::None),
+            );
+            rewritten.clamp_max_tokens(room);
+            (
+                rewritten.max_tokens(),
+                String::from_utf8(rewritten.bytes).unwrap(),
+            )
+        };
+        assert_eq!(
+            forced(
+                r#"{"output_config":{"effort":{"deep":["xhigh",{"x":1}]}},"chat_template_kwargs":[1,2,3],"max_tokens":32000,"model":"a-long-model-name"}"#,
+                9
+            ),
+            (
+                Some(9),
+                r#"{"output_config":{"effort":null},"chat_template_kwargs":{"enable_thinking":false},"max_tokens":9,"model":"up"}"#
+                    .to_owned()
+            )
+        );
+        assert_eq!(
+            forced(
+                r#"{"model":"m","chat_template_kwargs":{"enable_thinking":"yes please"},"max_tokens":7}"#,
+                5
+            ),
+            (
+                Some(5),
+                r#"{"model":"up","chat_template_kwargs":{"enable_thinking":false},"max_tokens":5}"#
+                    .to_owned()
+            )
+        );
+        assert_eq!(
+            forced(r#"{"max_tokens":8,"model":"m"}"#, 3),
+            (
+                Some(3),
+                r#"{"max_tokens":3,"model":"up","chat_template_kwargs":{"enable_thinking":false}}"#
+                    .to_owned()
+            )
         );
     }
 

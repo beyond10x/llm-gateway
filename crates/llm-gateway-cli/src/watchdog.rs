@@ -93,6 +93,9 @@ pub(crate) struct Watch {
     min_balance_usd: f64,
     /// Each declared model's idle window, by alias.
     idle_ms: BTreeMap<String, u64>,
+    /// Each `[aliases.*]` name's model: a call to an alias runs on its model's pod, and the
+    /// heartbeat reports it under the alias.
+    aliases: BTreeMap<String, String>,
     /// When this watchdog first saw each pod, by pod id.
     first_seen: BTreeMap<String, u64>,
     /// When this watchdog last saw each pod ready, by pod id.
@@ -113,6 +116,11 @@ impl Watch {
                 .models
                 .iter()
                 .map(|(alias, model)| (alias.clone(), idle_timeout_ms(model.idle_timeout_minutes)))
+                .collect(),
+            aliases: deployment
+                .aliases
+                .iter()
+                .map(|(alias, declared)| (alias.clone(), declared.model.clone()))
                 .collect(),
             first_seen: BTreeMap::new(),
             last_ready: BTreeMap::new(),
@@ -200,12 +208,22 @@ impl Watch {
             }
         }
         let idle_ms = self.idle_ms.get(alias)?.max(&self.stale_ms);
-        let route = heartbeat?
-            .routes
-            .iter()
-            .find(|route| route.route == alias)?;
-        let last = route.last_call_end_ms.unwrap_or(0).max(born);
-        (route.in_flight == 0 && now_ms.saturating_sub(last) > *idle_ms).then_some(Reason::Idle)
+        // The pod's activity is its model's route and the route of every alias of it.
+        let mut routes = heartbeat?.routes.iter().filter(|route| {
+            route.route == alias || self.aliases.get(&route.route).is_some_and(|m| m == alias)
+        });
+        let first = routes.next()?;
+        let (in_flight, last) = routes.fold(
+            (first.in_flight, first.last_call_end_ms.unwrap_or(0)),
+            |(in_flight, last), route| {
+                (
+                    in_flight.saturating_add(route.in_flight),
+                    last.max(route.last_call_end_ms.unwrap_or(0)),
+                )
+            },
+        );
+        let last = last.max(born);
+        (in_flight == 0 && now_ms.saturating_sub(last) > *idle_ms).then_some(Reason::Idle)
     }
 
     /// The earliest instant the pod is known to have existed: its container start, its uptime

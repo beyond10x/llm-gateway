@@ -1328,8 +1328,9 @@ fn label(value: &str) -> Result<Label, Refusal> {
     })
 }
 
-/// The inventory's routes: `routes` (the Runpod models') and one per hosted model, one target
-/// per wire carrying the declaration's `auth_kind` and `billing_kind`, all in alias order. No
+/// The inventory's routes: `routes` (the Runpod models'), one per `[aliases.*]` name
+/// ([`crate::serve::aliased`]) and one per hosted model, one target per wire carrying the
+/// declaration's `auth_kind` and `billing_kind`, all in alias order. No
 /// target names a base URL, a credential file or a credential. Then one per route of the routes
 /// document ([`crate::Routes`]).
 ///
@@ -1337,8 +1338,9 @@ fn label(value: &str) -> Result<Label, Refusal> {
 /// A `config:value` [`Refusal`] when a hosted model cannot be represented in an inventory.
 pub(crate) fn routes(
     deployment: &Deployment,
-    mut routes: Vec<RouteSummary>,
+    routes: Vec<RouteSummary>,
 ) -> Result<Vec<RouteSummary>, Refusal> {
+    let mut routes = crate::serve::aliased(deployment, routes)?;
     for (alias, hosted) in &deployment.hosted {
         let targets = targets(deployment, alias, hosted)?;
         let route =

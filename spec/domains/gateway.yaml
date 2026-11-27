@@ -814,7 +814,8 @@ entities:
   # price), both are `null` and every start is refused. `last_refusal` is
   # `{"at_ms","model"}` of the last start refused since the gateway started because it would pass
   # this ceiling (one that would pass both is on both entries), or `null`; a refusal for an
-  # unknown spend names no ceiling and is on no entry.
+  # unknown spend names no ceiling and is on no entry. A start for an alias
+  # (llm-gateway.deployment) is its model's pod start, and names the model.
   - name: llm-gateway.gateway.LimitEntry
     identity: {name: id, type: String}
     fields:
@@ -1055,8 +1056,33 @@ entities:
   #      server the gateway did not start is told the operator's effort (scenarios
   #      hosted-a-declared-effort-reaches-the-endpoint-when-the-request-names-none,
   #      hosted-a-declared-effort-never-replaces-a-named-one-or-reaches-another-wire).
+  #      Forced effort: on the messages wire only, a request to a model that forces the effort
+  #      `none` (`RelayModel::with_forced_effort`, llm-gateway.deployment.ForcedEffort) reaches
+  #      the target with thinking off, whatever effort it names: every top-level
+  #      `output_config` object's `effort` member, whatever its value, becomes `null`; every
+  #      top-level `chat_template_kwargs` object's `enable_thinking` member, whatever its value,
+  #      becomes `false`, and such an object without one gains `"enable_thinking":false` as its
+  #      last member; a top-level `chat_template_kwargs` that is not an object becomes
+  #      `{"enable_thinking":false}`; and a body without one gains
+  #      `"chat_template_kwargs":{"enable_thinking":false}` as its last top-level member. The
+  #      forced value wins in every case: the model's declared effort is never inserted, and
+  #      the W4 mapping still applies to `chat_template_kwargs.reasoning_effort`, which the
+  #      template no longer reads. The chat and responses wires are relayed as before, and a
+  #      messages request translated to another wire carries no forced effort, so the binary
+  #      refuses an alias of a model without the messages wire at start.
+  #      DECIDED 2026-11-27: the literal `"effort":"none"` would fail the turn, because vLLM
+  #      v0.27.1's messages request model admits only `low|medium|high|xhigh|max` or null
+  #      there (vllm/entrypoints/anthropic/protocol.py line 114); `null` leaves vLLM's
+  #      `reasoning_effort` unset (serving.py lines 513-514). A request's own
+  #      `chat_template_kwargs.enable_thinking` is not overridden by vLLM
+  #      (vllm/entrypoints/openai/chat_completion/protocol.py lines 571-573) and wins over the
+  #      server's default chat-template arguments (vllm/renderers/params.py lines 111-116), and
+  #      the Qwen3.8 template reads no effort when `enable_thinking` is false and writes an
+  #      empty thinking block (`chat_template.jinja` lines 46-56 and 165-166), so neither a
+  #      client's `reasoning_effort` nor the server's default turns thinking back on (scenario
+  #      forced-effort-none-turns-thinking-off-whatever-the-messages-request-names).
   #      DECIDED: llmgw re-serialises the parsed document (sorted keys, compact); llm-gateway
-  #      rewrites only those string values in place, and inserts only that member.
+  #      rewrites only those values in place, and inserts only those members.
   #   7. The embedding's target source hands out the target serving the model, or says why it
   #      hands out none: none can be had is `target-unavailable` (503); W6: the model's target
   #      is still starting and the request's hold budget has passed is `model-cold-start` (503)
@@ -1421,7 +1447,7 @@ commands:
       #           translated request reaches its pod over plain HTTP from llm's client, so a
       #           pod it reaches serves `http`
       #   models  `[{alias, upstream_model, wires, bearer, tool_calling, max_model_len,
-      #           context_window, reasoning_effort}]`, the relayed models;
+      #           context_window, reasoning_effort, forced_effort}]`, the relayed models;
       #           `wires` names `chat`, `responses`, `messages`; the optional `bearer` is the key
       #           every target the source hands out for that model carries (row B8); the
       #           optional `tool_calling` is `parsed` or `absent`, default `absent`, as the
@@ -1433,7 +1459,10 @@ commands:
       #           unless given, which the output clamp takes before the model's own window; the
       #           optional `reasoning_effort` is `low`, `medium` or `xhigh`, the effort the model
       #           declares (step 6), none unless given, and any other value makes the program
-      #           invalid; the optional `token_price` is an object of a token price's keys to
+      #           invalid; the optional `forced_effort` is `none`, the effort the model forces
+      #           on every messages request (step 6, "Forced effort"), none unless given, and
+      #           any other value makes the program invalid; the optional `token_price` is an
+      #           object of a token price's keys to
       #           strings (llm-gateway.deployment.TokenPriceDeclaration), read by the binary's
       #           own reader (`llm_gateway_cli::TokenPrice::from_table`) and declared on the
       #           model as the binary declares it; one the reader refuses composes nothing, its

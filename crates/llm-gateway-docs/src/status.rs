@@ -160,6 +160,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Relay",
+        "An alias of a Runpod model answers with thinking off on the same pod",
+        "An [aliases.<alias>] entry names a [models.<alias>] model and effort none; every Messages request to it reaches that model's pod with output_config.effort null and chat_template_kwargs.enable_thinking false, whatever effort it names, and starts no second pod. The model's own name is relayed as before. Settled from vLLM v0.27.1's source, not a live session.",
+        "crates/llm-gateway-cli/tests/relaying.rs::alias_a_call_reaches_the_aliased_models_pod_with_thinking_off_and_starts_no_second_pod",
+        Some("/docs/reference/deployment-document#aliases"),
+    ),
+    shipped(
+        "Relay",
         "A Messages request never asks for more output than the window has room for",
         "For a model with a window (a Runpod model's max_model_len, a hosted model's context_window), the input is counted at the target's /v1/messages/count_tokens; a max_tokens above the room left is lowered to it, and an input that leaves none is context-exceeded, whose message Claude Code compacts on. A count that fails relays the request unchanged. Settled from vLLM v0.27.1's source, not a live session.",
         "crates/llm-gateway/tests/wire_relay.rs::clamp_a_max_tokens_above_the_room_left_is_lowered_to_it_and_one_at_or_below_is_unchanged",

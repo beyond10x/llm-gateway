@@ -1158,6 +1158,160 @@ fn effort_a_hosted_model_gives_its_declared_effort_and_a_runpod_model_never_does
     );
 }
 
+// --- `[aliases.<alias>]`: a second name of a Runpod model with a forced effort ----------------
+
+/// `text` with `[aliases.small-plain]`, a second name of `small` forcing the effort `none`.
+fn with_plain_alias(text: &str) -> String {
+    format!("{text}\n[aliases.small-plain]\nmodel = \"small\"\neffort = \"none\"\n")
+}
+
+/// The owner's `POST /v1/models/<alias>/wake`, or `GET /v1/models/<alias>/status`.
+fn lifecycle(address: SocketAddr, method: &str, alias: &str, action: &str) -> String {
+    let mut stream = TcpStream::connect(address).unwrap();
+    stream.set_read_timeout(Some(WAIT)).unwrap();
+    write!(
+        stream,
+        "{method} /v1/models/{alias}/{action} HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n"
+    )
+    .unwrap();
+    let mut answer = String::new();
+    drop(stream.read_to_string(&mut answer));
+    answer
+}
+
+/// A call to the alias starts the aliased model's pod and reaches it as the aliased model,
+/// thinking off whatever effort it names; a call to the aliased model then reaches the same pod
+/// byte for byte as without the alias, and no second pod is created or counted.
+#[test]
+fn alias_a_call_reaches_the_aliased_models_pod_with_thinking_off_and_starts_no_second_pod() {
+    let fixture = Fixture::new("alias-one-pod");
+    let (deployment, runpod) = starting(&fixture, |text| with_plain_alias(&text));
+    let mut pod = Pod::start(3, "{\"id\":\"pod-1\"}");
+    let loopback = Arc::new(Loopback {
+        pod: pod.address,
+        asked: Mutex::new(Vec::new()),
+    });
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        Arc::clone(&loopback) as Arc<dyn PodConnector>,
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let address = running.local_addr();
+    let answers = [
+        post(
+            address,
+            "/v1/messages",
+            OWNER_SECRET,
+            "{\"model\":\"small-plain\",\"output_config\":{\"effort\":\"high\"},\"messages\":[]}",
+        ),
+        post(
+            address,
+            "/v1/messages",
+            OWNER_SECRET,
+            "{\"model\":\"small\",\"output_config\":{\"effort\":\"high\"},\"messages\":[]}",
+        ),
+        post(
+            address,
+            "/v1/messages",
+            OWNER_SECRET,
+            "{\"model\":\"small-plain\",\"chat_template_kwargs\":{\"enable_thinking\":true,\"reasoning_effort\":\"max\"},\"messages\":[]}",
+        ),
+    ];
+    let metrics = scrape(address);
+    running.shutdown();
+    for answer in &answers {
+        assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    }
+    assert_eq!(runpod.create_calls(), 1, "the alias started a second pod");
+    assert_eq!(metrics["llmgw_pod_starts_total"], "1");
+    let asked = loopback.asked.lock().unwrap().clone();
+    assert_eq!(asked.len(), 3);
+    assert!(
+        asked.iter().all(|authority| authority == &asked[0]),
+        "{asked:?}"
+    );
+    let body = |raw: &Vec<u8>| {
+        let text = String::from_utf8(raw.clone()).unwrap();
+        text.split_once("\r\n\r\n").unwrap().1.to_owned()
+    };
+    let bodies: Vec<String> = pod.received().iter().map(body).collect();
+    assert_eq!(
+        bodies,
+        [
+            "{\"model\":\"small\",\"output_config\":{\"effort\":null},\"messages\":[],\"chat_template_kwargs\":{\"enable_thinking\":false},\"stream\":true}",
+            "{\"model\":\"small\",\"output_config\":{\"effort\":\"xhigh\"},\"messages\":[],\"stream\":true}",
+            "{\"model\":\"small\",\"chat_template_kwargs\":{\"enable_thinking\":false,\"reasoning_effort\":\"xhigh\"},\"messages\":[],\"stream\":true}",
+        ]
+    );
+}
+
+/// The owner's wake of the alias starts the aliased model's pod, which the aliased model's own
+/// wake and status then find: one create, and both names report the same phase.
+#[test]
+fn alias_its_wake_and_status_are_the_aliased_models() {
+    let fixture = Fixture::new("alias-wake");
+    let deployment = deployment(&fixture, |text| with_plain_alias(&text));
+    let pod = Pod::start(0, "{}");
+    let runpod = EmulatedRunpod::new();
+    runpod.ready_after(3);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let address = running.local_addr();
+    let before = lifecycle(address, "GET", "small", "status");
+    let woken = lifecycle(address, "POST", "small-plain", "wake");
+    let again = lifecycle(address, "POST", "small", "wake");
+    let small = lifecycle(address, "GET", "small", "status");
+    let plain = lifecycle(address, "GET", "small-plain", "status");
+    let route = |alias: &str| {
+        let mut stream = TcpStream::connect(address).unwrap();
+        stream.set_read_timeout(Some(WAIT)).unwrap();
+        write!(
+            stream,
+            "GET /v1/routes/{alias} HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER_SECRET}\r\nconnection: close\r\n\r\n"
+        )
+        .unwrap();
+        let mut raw = String::new();
+        stream.read_to_string(&mut raw).unwrap();
+        raw
+    };
+    let (small_route, plain_route) = (route("small"), route("small-plain"));
+    running.shutdown();
+    assert!(plain_route.starts_with("HTTP/1.1 200 "), "{plain_route}");
+    let targets = |raw: &str| {
+        let body = raw.split_once("\r\n\r\n").unwrap().1;
+        serde_json::from_str::<serde_json::Value>(body).unwrap()["route"]["targets"].clone()
+    };
+    assert_eq!(
+        targets(&plain_route),
+        targets(&small_route),
+        "the alias is a route of its model's targets"
+    );
+    assert!(
+        targets(&plain_route)
+            .as_array()
+            .is_some_and(|t| !t.is_empty())
+    );
+    assert!(before.contains("\"phase\":\"stopped\""), "{before}");
+    assert!(woken.starts_with("HTTP/1.1 202 "), "{woken}");
+    assert!(woken.contains("\"phase\":\"starting\""), "{woken}");
+    assert!(again.contains("\"phase\":\"starting\""), "{again}");
+    assert_eq!(runpod.create_calls(), 1, "a wake started a second pod");
+    let body = |raw: &str| raw.split_once("\r\n\r\n").unwrap().1.to_owned();
+    assert!(small.contains("\"phase\":\"starting\""), "{small}");
+    assert!(plain.contains("\"model\":\"small-plain\""), "{plain}");
+    assert_eq!(
+        body(&small),
+        body(&plain).replacen("\"model\":\"small-plain\"", "\"model\":\"small\"", 1)
+    );
+}
+
 // --- The output clamp's window (story:max-tokens-clamp) ---------------------------------------
 
 /// Every request a pod has read so far, each as `<request line> <body>`, without waiting for the

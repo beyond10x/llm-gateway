@@ -294,3 +294,72 @@ fn the_watchdog_table_has_its_defaults_and_refuses_values_outside_its_ranges() {
     let unknown = crate::parse(&document(30, "terminate_everything = true\n")).unwrap_err();
     assert_eq!(unknown.code(), "config:schema");
 }
+
+/// Adversary (story:model-alias-thinking-off). A call to `[aliases.small-plain]` runs on
+/// `small`'s pod, but `serve` names its heartbeat route by the alias the call named
+/// (`served_model` sets the call's route to the `RelayModel` alias, and
+/// `Dashboard::route_activity` reports it under that name). With the model's own name idle past
+/// its limit and a call to the alias in flight on the same pod, the pod is busy: the watchdog
+/// must not terminate it as idle.
+#[test]
+fn adversary_alias_a_pod_busy_under_its_alias_is_not_terminated_as_idle() {
+    let text = format!(
+        "{}\n[aliases.small-plain]\nmodel = \"small\"\neffort = \"none\"\n",
+        document(30, "").replacen("wires = [\"chat\"]", "wires = [\"chat\", \"messages\"]", 1)
+    );
+    let deployment = crate::parse(&text).unwrap();
+    let config = deployment.watchdog.clone().unwrap();
+    let mut watch = Watch::new(&deployment, &config);
+    let mut runpod = EmulatedRunpod::new();
+    own_pod(&runpod, 2 * HOUR);
+    let busy_under_the_alias = beat(
+        1_000,
+        vec![
+            ("small", Some(NOW - HOUR), 0),
+            ("small-plain", Some(NOW - MINUTE), 1),
+        ],
+    );
+    assert_eq!(
+        reasons(&watch.poll(&mut runpod, Some(&busy_under_the_alias), NOW)),
+        vec![],
+        "a call to the alias is in flight on the pod"
+    );
+    assert!(runpod.terminations().is_empty());
+}
+
+/// The alias's activity counts for its model's pod both ways: a recent call ended under the
+/// alias keeps the pod, and with the model and the alias both idle past the limit it goes.
+#[test]
+fn alias_a_recent_call_to_the_alias_keeps_the_pod_and_both_idle_terminate_it() {
+    let text = format!(
+        "{}\n[aliases.small-plain]\nmodel = \"small\"\neffort = \"none\"\n",
+        document(30, "").replacen("wires = [\"chat\"]", "wires = [\"chat\", \"messages\"]", 1)
+    );
+    let deployment = crate::parse(&text).unwrap();
+    let config = deployment.watchdog.clone().unwrap();
+    let mut watch = Watch::new(&deployment, &config);
+    let mut runpod = EmulatedRunpod::new();
+    let id = own_pod(&runpod, 2 * HOUR);
+    let recent = beat(
+        1_000,
+        vec![
+            ("small", Some(NOW - HOUR), 0),
+            ("small-plain", Some(NOW - MINUTE), 0),
+        ],
+    );
+    assert_eq!(
+        reasons(&watch.poll(&mut runpod, Some(&recent), NOW)),
+        vec![]
+    );
+    let idle = beat(
+        1_000,
+        vec![
+            ("small", Some(NOW - HOUR), 0),
+            ("small-plain", Some(NOW - HOUR), 0),
+        ],
+    );
+    assert_eq!(
+        reasons(&watch.poll(&mut runpod, Some(&idle), NOW)),
+        vec![(id, Reason::Idle)]
+    );
+}

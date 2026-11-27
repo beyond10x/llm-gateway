@@ -526,7 +526,7 @@ mod relay {
         Review, RouteInventory, SharedSecretVerifier, StaticHeader, StaticHeaderError,
         TargetBearer, TargetRefusal, ToolCalling, UsageRecord, UsageRecords, Wire,
     };
-    use llm_gateway::{ModelKind, ModelPhase, ModelStatus};
+    use llm_gateway::{ForcedEffort, ModelKind, ModelPhase, ModelStatus};
     use llm_gateway_cli::TokenPrice;
     use llm_gateway_cli::{
         EndpointCredential, HostedEndpoint, HostedTargets, LlmTranslator, PodConnector,
@@ -791,6 +791,9 @@ mod relay {
         /// `low`, `medium` or `xhigh`: the effort a messages request naming none is given.
         #[serde(default)]
         reasoning_effort: Option<String>,
+        /// `none`: the effort every messages request is forced to, whatever it names.
+        #[serde(default)]
+        forced_effort: Option<String>,
         /// Served by this hosted endpoint, through the binary's hosted target source, instead
         /// of the source's current pod.
         #[serde(default)]
@@ -2233,6 +2236,11 @@ mod relay {
                 .ok_or_else(|| "fixture:unknown-reasoning-effort".to_owned())?;
             relayed = relayed.with_reasoning_effort(effort);
         }
+        if let Some(effort) = model.forced_effort.as_deref() {
+            let effort = ForcedEffort::from_name(effort)
+                .ok_or_else(|| "fixture:unknown-forced-effort".to_owned())?;
+            relayed = relayed.with_forced_effort(effort);
+        }
         // A model served by a hosted endpoint is the binary's `hosted` kind, and one whose
         // endpoint takes the client's own credential forwards it, as the binary composes both.
         if let Some(endpoint) = &model.endpoint {
@@ -2605,6 +2613,10 @@ mod relay {
                 .reasoning_effort
                 .as_deref()
                 .is_none_or(|effort| ReasoningEffort::from_name(effort).is_some())
+                && model
+                    .forced_effort
+                    .as_deref()
+                    .is_none_or(|effort| ForcedEffort::from_name(effort).is_some())
         });
         endpoints_agree
             && matches!(

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.deployment.AliasDeclaration",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:938f5f1da728d15f469387bf85a3f0cc6fc4ea02b3e75f72f5f0e97999433f09",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.deployment.AliasDeclaration": {
+      "title": "AliasDeclaration",
+      "x-ess-name": "llm-gateway.deployment.AliasDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "effort": {
+          "$ref": "#/$defs/llm-gateway.deployment.ForcedEffort"
+        }
+      },
+      "required": [
+        "model",
+        "effort"
+      ],
+      "additionalProperties": false
+    },
+    "llm-gateway.deployment.ForcedEffort": {
+      "title": "ForcedEffort",
+      "x-ess-name": "llm-gateway.deployment.ForcedEffort",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "None"
+      ]
+    }
+  }
+}

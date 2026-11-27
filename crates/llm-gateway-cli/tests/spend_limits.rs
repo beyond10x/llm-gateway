@@ -33,6 +33,17 @@ impl llm_gateway_cli::PodConnector for NoPod {
 /// 2 USD an hour (its startup estimate over the default 600 s is 0.333334 USD), and `ledger`
 /// as the provider's `spend_ledger_file` when given.
 fn deployment(fixture: &Fixture, caps: &str, ledger: Option<&Path>) -> Deployment {
+    deployment_with(fixture, caps, ledger, "")
+}
+
+/// As [`deployment`], with `extra` appended to the document and, with an `extra`, the messages
+/// wire on the model.
+fn deployment_with(
+    fixture: &Fixture,
+    caps: &str,
+    ledger: Option<&Path>,
+    extra: &str,
+) -> Deployment {
     let secret = fixture.owner_secret();
     let key = fixture.vllm_key();
     let text = with_vllm_key(&document("127.0.0.1:0", &secret), &key);
@@ -49,7 +60,17 @@ fn deployment(fixture: &Fixture, caps: &str, ledger: Option<&Path>) -> Deploymen
         "max_model_len = 1024\n",
         "max_model_len = 1024\nprice_per_hour_usd = 2\n",
     );
-    load(&fixture.config(&text)).unwrap()
+    let text = if extra.is_empty() {
+        text
+    } else {
+        // An alias forces its effort on the messages wire, which its model must declare.
+        mutate(
+            &text,
+            "wires = [\"chat\", \"responses\"]\n",
+            "wires = [\"chat\", \"responses\", \"messages\"]\n",
+        )
+    };
+    load(&fixture.config(&format!("{text}{extra}"))).unwrap()
 }
 
 /// A ledger holding one stopped pod of `small` at 2 USD an hour, from `started_ms` for `run_ms`.
@@ -475,5 +496,87 @@ fn limits_a_start_past_both_ceilings_is_the_last_refusal_of_both() {
                 Some((1_000, "small"))
             ),
         ])
+    );
+}
+
+const ALIAS: &str = "\n[aliases.small-plain]\nmodel = \"small\"\neffort = \"none\"\n";
+
+/// An alias starts its model's pod: a wake of the alias the daily ceiling refuses is that
+/// ceiling's last refusal under the model's name, not the alias's.
+#[test]
+fn limits_a_refused_start_of_an_alias_names_its_model() {
+    let fixture = Fixture::new("limits-alias-refused");
+    let deployment = deployment_with(&fixture, "daily_cap_usd = 10\n", None, ALIAS);
+    let runpod = EmulatedRunpod::new();
+    spend(&runpod, 9_666_667, 9_666_667);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        Arc::new(NoPod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let refused = send(
+        running.local_addr(),
+        "POST",
+        "/v1/models/small-plain/wake",
+        None,
+    );
+    let read = limits(running.local_addr());
+    running.shutdown();
+    assert!(refused.contains("\"code\":\"spend-ceiling\""), "{refused}");
+    assert_eq!(
+        read,
+        list(&[row(
+            "daily",
+            "10.000000",
+            (0, DAY_MS),
+            Some(("9.666667", "0.333333")),
+            Some((1_000, "small")),
+        )])
+    );
+    assert_eq!(runpod.create_calls(), 0);
+}
+
+/// An alias and its model share one pod: the alias's wake starts it, it counts once as a live
+/// pod, and the model's wake starts nothing more.
+#[test]
+fn limits_an_alias_and_its_model_count_their_one_pod_once() {
+    let fixture = Fixture::new("limits-alias-shared");
+    let deployment = deployment_with(&fixture, "daily_cap_usd = 10\n", None, ALIAS);
+    let runpod = EmulatedRunpod::new();
+    no_spend(&runpod);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        Arc::new(NoPod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let alias = send(
+        running.local_addr(),
+        "POST",
+        "/v1/models/small-plain/wake",
+        None,
+    );
+    let model = wake(running.local_addr());
+    let read = limits(running.local_addr());
+    running.shutdown();
+    assert!(alias.starts_with("HTTP/1.1 202 "), "{alias}");
+    assert!(model.starts_with("HTTP/1.1 202 "), "{model}");
+    assert_eq!(
+        runpod.create_calls(),
+        1,
+        "one pod for the alias and its model"
+    );
+    assert_eq!(
+        read,
+        list(&[row(
+            "daily",
+            "10.000000",
+            (0, DAY_MS),
+            Some(("0.333334", "9.666666")),
+            None,
+        )])
     );
 }

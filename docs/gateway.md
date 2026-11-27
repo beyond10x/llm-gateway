@@ -110,6 +110,7 @@ The gateway serves one request per connection; keep-alive is not in this milesto
 | `POST` | `/v1/models/{alias}/wake` | owner | Starts the model's pod and answers `202` at once with its status ([the lifecycle routes](#the-lifecycle-routes)). |
 | `GET`, `HEAD` | `/v1/models/{alias}/status` | owner | The model's phase and profile; starts nothing. A hosted model's or route's is a probe of its endpoint. |
 | `GET`, `HEAD` | `/v1/status` | owner | Every relayed model's kind, wires, status and whether a call is answered now ([the status list](#the-status-list)). |
+| `GET`, `HEAD` | `/v1/limits` | owner | Every enforced spend ceiling with its window, spent, left and last refused start ([the spend ceilings](#the-spend-ceilings)). |
 | `GET`, `HEAD` | `/v1/calls/{id}` | owner, as `GET /v1/launch` takes it | The record of the model call whose answers carried `x-llm-gateway-call: {id}` ([call ids and call records](#call-ids-and-call-records)). |
 | `POST` | `/v1/chat/completions` | owner, or none under `IngressAuth::None`, or a reviewed service account under `IngressAuth::ServiceAccountToken` | The `chat` wire, relayed ([the relay](#the-relay)). |
 | `POST` | `/v1/responses` | owner, or none under `IngressAuth::None`, or a reviewed service account under `IngressAuth::ServiceAccountToken` | The `responses` wire, relayed. |
@@ -383,6 +384,69 @@ the gateway changes no client's headers or body to pass the rule
 ```json
 {"model":"local-messages","kind":"hosted","wires":["messages"],"phase":"ready","callable":true,"reason":"serves-claude-code-clients-only"}
 ```
+
+### The spend ceilings
+
+`GET /v1/limits` answers one list of every spend ceiling a pod pool of the gateway enforces, as
+`application/json`; `HEAD` answers the same without a body. It takes the owner credential, and
+the method (`allow: GET, HEAD`), body and readiness checks of the status list, all before the
+source is asked anything. Without the owner credential it is refused as `/v1/routes` is:
+`credential-absent`, `credential-malformed` or `credential-rejected`. A deployment whose
+providers declare no `daily_cap_usd` and no `total_cap_usd`, and a gateway composed without a
+relay, answer an empty list:
+
+```json
+{"format":"llm-gateway.limits/1","limits":[]}
+```
+
+Each entry is one ceiling, the daily one before the total one:
+
+```json
+{"format":"llm-gateway.limits/1","limits":[
+ {"provider":"runpod","ceiling":"daily","cap_usd":"10.000000","window_start_ms":1764201600000,"window_end_ms":1764288000000,"spent_usd":"9.800000","left_usd":"0.200000","last_refusal":{"at_ms":1764219600000,"model":"small"}},
+ {"provider":"runpod","ceiling":"total","cap_usd":"100.000000","window_start_ms":1761627600000,"window_end_ms":1764219600000,"spent_usd":"9.800000","left_usd":"90.200000","last_refusal":null}]}
+```
+
+(Wrapped here; the answer is one line.) `provider` is the `[providers.<name>]` table that
+declares the ceiling, `ceiling` is `daily` or `total`, and `cap_usd` its amount. Every amount is
+a decimal string of USD with six decimals: the micro-USD the spend check compares exactly. The
+window is in Unix milliseconds, UTC: for `daily` the start of the current UTC day and the start
+of the next, when the day's reported and ledger spend starts again from nothing; for `total` the
+30 days up to now (from 0 at the earliest), which the spend ledger counts and Runpod reports its
+pod billing over.
+
+`spent_usd` is what the spend check counts against the ceiling at the instant of the read, read
+under the pool's lock from the same values a start's check reads (`docs/hosting.md`): the larger
+of the account's reported spend and the spend ledger's inside the window, plus each live pod's
+whole run so far. A live pod is not cut at the window's start: one started before the UTC day
+began counts its hours before midnight against today's ceiling too, and so a daily entry need not
+read `0.000000` at the start of a day while a pod runs. `left_usd` is the cap less `spent_usd`,
+never below `0.000000`.
+So a start is admitted exactly when its own estimate (the model's price per hour times its
+startup deadline) is at most `left_usd` of every entry, and an entry whose `spent_usd` equals its
+cap reads `left_usd` `0.000000` while every start is refused `spend-ceiling`. When the check
+cannot count (the spend read failed or answered nothing, the ledger could not be read or
+written, or a live pod has no price), `spent_usd` and `left_usd` are both `null`, and every start
+is refused `spend-ceiling` until it can. `last_refusal` is the instant and the model of the last
+start, by a call or a wake, refused since the gateway started because it would pass this
+ceiling, or `null`: a start that would pass both is on both entries, though its refusal is the
+daily one. A refusal for an unknown spend names no ceiling and is on no entry. An alias
+(`[aliases.<alias>]`) starts, shares and is counted as its model's one pod, so a start refused
+for a call or wake of the alias names the model, not the alias.
+
+A read does what a start does before its check, under the pool's lock, and no more: one listing
+of the account's pods, so a pod that ended out of band is no longer counted live (retiring what
+a start would retire and submitting the stops the pool already owes), then one billing request
+for the account's spend. Neither is cached: each read costs one listing and one billing request,
+calls and wakes of the pool's models wait behind it, and it waits behind a start in progress. It
+starts and creates nothing, makes no usage record and counts no series; when the pool's
+controller refuses the step, `spent_usd` and `left_usd` are `null`. A ceiling binds
+only a pool the gateway composed: a provider whose `connectors` connection or REST API was not
+reachable at start has no pool, and its ceilings are not listed. The dashboard does not show
+these entries (its snapshot is written up to twice a second, and an entry costs a spend read).
+The specification is `llm-gateway.gateway.LimitsRoute` and `LimitEntry`; the scenarios are
+`contracts/gateway/scenarios/limits-*` and the binary's tests
+`crates/llm-gateway-cli/tests/spend_limits.rs`.
 
 ## Service-account tokens
 

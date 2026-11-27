@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.gateway.LimitCeiling",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:03da68319a4b639c511b5d07125dd00db2a6f341848efd82fbeb3942491fb3b0",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.LimitCeiling": {
+      "title": "LimitCeiling",
+      "x-ess-name": "llm-gateway.gateway.LimitCeiling",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Daily",
+        "Total"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "code",
+          "type": "String",
+          "values": {
+            "Daily": "daily",
+            "Total": "total"
+          }
+        }
+      ]
+    }
+  }
+}

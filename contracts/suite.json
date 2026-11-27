@@ -98,6 +98,8 @@
       "llm-gateway.gateway/authored/k11-a-model-with-no-wire-is-refused-at-composition",
       "llm-gateway.gateway/authored/k11-a-wire-the-model-does-not-declare-is-refused-without-waking-a-target",
       "llm-gateway.gateway/authored/k11-two-models-with-one-alias-are-refused-at-composition",
+      "llm-gateway.gateway/authored/limits-each-ceiling-reads-what-the-spend-check-reads-and-names-the-last-start-it-refused",
+      "llm-gateway.gateway/authored/limits-the-list-takes-the-owner-credential-and-without-a-ceiling-is-empty",
       "llm-gateway.gateway/authored/liveness-is-served-without-a-credential-and-readiness-starts-unready",
       "llm-gateway.gateway/authored/metrics-each-model-call-feeds-one-outcome-and-the-duration-histogram-of-its-model",
       "llm-gateway.gateway/authored/metrics-listener-serves-get-and-head-on-exactly-metrics-and-nothing-else",
@@ -828,6 +830,16 @@
         "digest": "sha256:645deeb4068f89bd7ae3e6b21a339ca8422fff70ba6e3753083e6286858d09ec",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/k11-two-models-with-one-alias-are-refused-at-composition"
+      },
+      "gateway/scenarios/limits-each-ceiling-reads-what-the-spend-check-reads-and-names-the-last-start-it-refused.yaml": {
+        "digest": "sha256:4d9cadfbe17022eda1e4bf6f3c0f3011f1fdca74b979d9d57b4e2707fcabfd03",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/limits-each-ceiling-reads-what-the-spend-check-reads-and-names-the-last-start-it-refused"
+      },
+      "gateway/scenarios/limits-the-list-takes-the-owner-credential-and-without-a-ceiling-is-empty.yaml": {
+        "digest": "sha256:471ddfa1ec07efb0438aa318dbc580dd5864a3a8261111d53ed9295b69863772",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/limits-the-list-takes-the-owner-credential-and-without-a-ceiling-is-empty"
       },
       "gateway/scenarios/liveness-is-served-without-a-credential-and-readiness-starts-unready.yaml": {
         "digest": "sha256:51a85b84f5e76b26ac8853b011864239e79e4720a64e6ceb3df73e6dae938a44",
@@ -2051,7 +2063,7 @@
       }
     },
     "counts": {
-      "authored": 341,
+      "authored": 343,
       "generated": 94,
       "outside": 0,
       "refused": 0
@@ -2166,9 +2178,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "bc55a2aae98a22fa92974677861c57b374031f5c2a073144ac5dbc4322a58433",
+    "contract_digest": "8dc935bced554b4f292b1b484e2df5ab5f7f8e949cba36660b5793abdc327951",
     "scenario_initial_state": "empty",
-    "spec_digest": "d73db8d6d6f97ff9697994c83a549fbc11bd0264d6f2c80518be5c5236f010d2",
+    "spec_digest": "0f101ae9f16946f7b38cf02ed950172449b7a8803891086dfab4a27bded53512",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -11613,6 +11625,271 @@
                 "value": "relay:duplicate-model"
               },
               "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/limits-each-ceiling-reads-what-the-spend-check-reads-and-names-the-last-start-it-refused": {
+      "purpose": "each ceiling lists its window, spent and left; a wake past what is left is refused and named as the last refusal",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"small\",\"wires\":[\"chat\"]}],\"pods\":[[]],\"runpod\":{\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/owner-secret\\\"\\n\\n[providers.runpod]\\nkind = \\\"runpod-vllm\\\"\\ndaily_cap_usd = 0.3\\ntotal_cap_usd = 50\\n\\n[models.small]\\nprovider = \\\"runpod\\\"\\nwires = [\\\"chat\\\"]\\ncontext_window = 65536\\nhf_model = \\\"example/small-model\\\"\\nimage = \\\"vllm/vllm-openai:v0.27.1\\\"\\ngpu_types = [\\\"NVIDIA L40S\\\"]\\nmax_model_len = 1024\\nprice_per_hour_usd = 2\\n\"},\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/limits\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"POST\",\"path\":\"/v1/models/small/wake\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/limits\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models/small/status\",\"body\":\"\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"format\":\"llm-gateway.limits/1\",\"limits\":[{\"provider\":\"runpod\",\"ceiling\":\"daily\",\"cap_usd\":\"0.300000\",\"window_start_ms\":0,\"window_end_ms\":86400000,\"spent_usd\":\"0.000000\",\"left_usd\":\"0.300000\",\"last_refusal\":null},{\"provider\":\"runpod\",\"ceiling\":\"total\",\"cap_usd\":\"50.000000\",\"window_start_ms\":0,\"window_end_ms\":1000,\"spent_usd\":\"0.000000\",\"left_usd\":\"50.000000\",\"last_refusal\":null}]}",
+                  "{\"error\":{\"code\":\"spend-ceiling\",\"message\":\"the model's pod was not started: it would pass a spend ceiling of its provider account, or that account's spend is unknown\"}}",
+                  "{\"format\":\"llm-gateway.limits/1\",\"limits\":[{\"provider\":\"runpod\",\"ceiling\":\"daily\",\"cap_usd\":\"0.300000\",\"window_start_ms\":0,\"window_end_ms\":86400000,\"spent_usd\":\"0.000000\",\"left_usd\":\"0.300000\",\"last_refusal\":{\"at_ms\":1000,\"model\":\"small\"}},{\"provider\":\"runpod\",\"ceiling\":\"total\",\"cap_usd\":\"50.000000\",\"window_start_ms\":0,\"window_end_ms\":1000,\"spent_usd\":\"0.000000\",\"left_usd\":\"50.000000\",\"last_refusal\":null}]}",
+                  "{\"model\":\"small\",\"phase\":\"stopped\"}"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "lifecycle_asks": {
+                "kind": "literal",
+                "value": [
+                  "wake small",
+                  "status small"
+                ]
+              },
+              "pod_creates": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "records": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 answered",
+                  "503 spend-ceiling",
+                  "200 answered",
+                  "200 answered"
+                ]
+              },
+              "retry_after": {
+                "kind": "literal",
+                "value": [
+                  "absent",
+                  "absent",
+                  "absent",
+                  "absent"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/limits-the-list-takes-the-owner-credential-and-without-a-ceiling-is-empty": {
+      "purpose": "GET /v1/limits takes the owner credential under ingress_auth none, its method, a body and readiness are refused first, and a gateway whose models run under no spend ceiling lists none",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"ingress_auth\":\"none\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"small\",\"wires\":[\"chat\"]}],\"pods\":[[]],\"steps\":[{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/limits\",\"body\":\"\"},{\"step\":\"mark_ready\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/limits\",\"body\":\"\",\"credential\":false},{\"step\":\"request\",\"method\":\"POST\",\"path\":\"/v1/limits\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/limits\",\"body\":\"{}\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/limits\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"HEAD\",\"path\":\"/v1/limits\",\"body\":\"\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"error\":{\"code\":\"unavailable\",\"message\":\"the gateway is not ready to serve inspection\"}}",
+                  "{\"error\":{\"code\":\"credential-absent\",\"message\":\"no owner credential was presented\"}}",
+                  "{\"error\":{\"code\":\"method-not-allowed\",\"message\":\"this path does not accept that method\"}}",
+                  "{\"error\":{\"code\":\"body-not-allowed\",\"message\":\"the inspection surface accepts no request body\"}}",
+                  "{\"format\":\"llm-gateway.limits/1\",\"limits\":[]}",
+                  ""
+                ]
+              },
+              "connections": {
+                "kind": "literal",
+                "value": []
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=GET, HEAD",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent"
+                ]
+              },
+              "lifecycle_asks": {
+                "kind": "literal",
+                "value": []
+              },
+              "records": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "503 unavailable",
+                  "ok",
+                  "401 credential-absent",
+                  "405 method-not-allowed",
+                  "400 body-not-allowed",
+                  "200 answered",
+                  "200 answered"
+                ]
+              },
+              "upstream": {
                 "kind": "literal",
                 "value": []
               },

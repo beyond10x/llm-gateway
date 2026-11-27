@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-27T15:17:11Z",
+  "actor": "human:operator",
+  "artifact": "story:spend-ceilings-readable",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "RUSTUP_TOOLCHAIN=1.98.0 slot --timeout 30m task check exit 0 at 374ac3e35 (main merged): 1528 tests run: 1528 passed, 1 skipped; conformance 437/437 on 3 runs",
+    "reference": "red before the change: 8 failed (404 path-unknown); adversary red tests 288c41eba green after 983cfac80"
+  }
+}

@@ -479,6 +479,35 @@ types:
       - {name: format, type: String}
     variants:
       - {name: List, attributes: {path: /v1/status, methods: "GET, HEAD", format: llm-gateway.status/1}}
+  # The owner's spend ceilings (story:limits-read): `GET /v1/limits`, and `HEAD` without a body,
+  # answered `200` `application/json` `{"format":"llm-gateway.limits/1","limits":[LimitEntry…]}`,
+  # one entry per spend ceiling a pool the gateway composed enforces
+  # (llm-gateway.runpod.SpendLedger), the daily one before the total one. With no ceiling, or
+  # without a relay, the list is empty. It takes the credential and the method, body and
+  # readiness checks of StatusRoute, all before the source is asked anything, and the refusals
+  # of `/v1/routes` without the owner's credential. Each entry is read under the pool's lock with
+  # the values the spend check of a start reads at that instant, after the step a start takes
+  # before its check: one listing of the account's pods (retiring what a start would and
+  # submitting the stops the pool owes), then one spend read of the account, the ledger and the
+  # running estimate of the live pods. Nothing is cached, and the pool's starts wait behind a
+  # read. It starts and creates nothing, makes no usage record and counts no series.
+  - name: llm-gateway.gateway.LimitsRoute
+    kind: enum
+    attributes:
+      - {name: path, type: String}
+      - {name: methods, type: String}
+      - {name: format, type: String}
+    variants:
+      - {name: List, attributes: {path: /v1/limits, methods: "GET, HEAD", format: llm-gateway.limits/1}}
+  # Which spend ceiling a LimitEntry is: `daily`, the UTC day the check counts from, or `total`,
+  # the 30 days up to now the ledger counts and Runpod reports its pod billing over.
+  - name: llm-gateway.gateway.LimitCeiling
+    kind: enum
+    attributes:
+      - {name: code, type: String}
+    variants:
+      - {name: Daily, attributes: {code: daily}}
+      - {name: Total, attributes: {code: total}}
   # The id of one model call (story:call-id-and-usage-record). Every request to a wire path that
   # makes a llm-gateway.telemetry.UsageRecord (Relay step 10: it passed authentication, or
   # needed none under IngressAuth `None`) is given one id when its head is decided, and every
@@ -766,6 +795,39 @@ entities:
       - {name: profile, type: 'Optional<String>'}
       - {name: callable, type: 'Optional<Boolean>'}
       - {name: reason, type: 'Optional<String>'}
+    lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
+  # One entry of the limits list (LimitsRoute), keys in this order:
+  # `{"provider","ceiling","cap_usd","window_start_ms","window_end_ms","spent_usd","left_usd",
+  # "last_refusal"}`. `provider` names the `[providers.<name>]` table that declares the ceiling,
+  # `ceiling` its LimitCeiling and `cap_usd` its amount. Every amount is a decimal string of USD
+  # with six decimals, the micro-USD the check compares exactly. The window is in Unix
+  # milliseconds, UTC: for `daily` the start of the current UTC day and the start of the next,
+  # for `total` 30 days before now (0 at the earliest) and now. `spent_usd` is what the check
+  # counts against the ceiling: the larger of the account's reported spend and the ledger's
+  # inside the window, plus each live pod's whole run so far (a live pod is not cut at the
+  # window's start, so a pod running across midnight counts its earlier hours against the new
+  # day too); `left_usd` is the cap less that,
+  # never below `0.000000`. So a start is admitted exactly when its own estimate (its price per
+  # hour times its startup deadline) is at most `left_usd` of every entry, and spent equal to the
+  # cap is `left_usd` `0.000000` with every start refused `spend-ceiling`. When the check cannot
+  # count (the spend read failed or answered nothing, the ledger is unsound, or a live pod has no
+  # price), both are `null` and every start is refused. `last_refusal` is
+  # `{"at_ms","model"}` of the last start refused since the gateway started because it would pass
+  # this ceiling (one that would pass both is on both entries), or `null`; a refusal for an
+  # unknown spend names no ceiling and is on no entry. A start for an alias
+  # (llm-gateway.deployment) is its model's pod start, and names the model.
+  - name: llm-gateway.gateway.LimitEntry
+    identity: {name: id, type: String}
+    fields:
+      - {name: provider, type: String}
+      - {name: ceiling, type: llm-gateway.gateway.LimitCeiling}
+      - {name: cap_usd, type: String}
+      - {name: window_start_ms, type: Integer}
+      - {name: window_end_ms, type: Integer}
+      - {name: spent_usd, type: 'Optional<String>'}
+      - {name: left_usd, type: 'Optional<String>'}
+      - {name: last_refusal_at_ms, type: 'Optional<Integer>'}
+      - {name: last_refusal_model, type: 'Optional<String>'}
     lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
   - name: llm-gateway.gateway.ExchangeObservation
     identity: {name: observation_id, type: String}
@@ -1339,7 +1401,8 @@ commands:
   #      lifecycle path of one (`/v1/models/{alias}/wake` and `/v1/models/{alias}/status`) is
   #      answered as LifecycleRoute says. Without a relay a lifecycle path is a path the gateway
   #      does not serve (step 8). Exactly `/v1/status`, with or without a relay, is answered
-  #      as StatusRoute says, and every path under `/v1/calls/` as CallRoute says.
+  #      as StatusRoute says, exactly `/v1/limits` as LimitsRoute says, and every path under
+  #      `/v1/calls/` as CallRoute says.
   #   7. `/metrics`, R4 (see RelayObservation).
   #   8. Inspection: anything but `GET` or `HEAD` is `method-not-allowed` with
   #      `allow: GET, HEAD`, the two public routes included; a declared body is

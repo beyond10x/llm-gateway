@@ -749,6 +749,13 @@ pub trait RelayTargets: Send + Sync {
     fn unavailable_reason(&self, _alias: &str) -> Option<String> {
         None
     }
+
+    /// Every spend ceiling the source enforces as its spend check counts it now
+    /// (`GET /v1/limits`, story:limits-read), the daily one before the total one. Asked for
+    /// nothing else: no target, wake or status. Empty, the default, for a source with none.
+    fn spend_limits(&self) -> Vec<crate::SpendLimit> {
+        Vec::new()
+    }
 }
 
 /// Makes the one answer body a non-streamed call would have been answered with out of the
@@ -1518,6 +1525,11 @@ impl Relay {
             return Err(RefusalCode::ModelUnknown);
         }
         self.targets.status(alias).ok_or(RefusalCode::PathUnknown)
+    }
+
+    /// Every spend ceiling the source enforces (`GET /v1/limits`, story:limits-read).
+    pub(crate) fn spend_limits(&self) -> Vec<crate::SpendLimit> {
+        self.targets.spend_limits()
     }
 
     /// Every relayed model in alias order with the status its source reports, `None` for one

@@ -238,7 +238,9 @@ owner starts it with `POST /v1/models/<alias>/wake`, unless the model sets
 gateway keeps its own pods' estimated spend in the provider's `spend_ledger_file` (by default
 `spend-ledger.json` in `$XDG_STATE_HOME/llm-gateway`, else `$HOME/.local/state/llm-gateway`), and
 each cap counts the larger of Runpod's reported spend, which lags by hours, and that ledger, so
-pods already stopped and pods started before a restart count. A model whose provider
+pods already stopped and pods started before a restart count. `GET /v1/limits` shows the owner
+each cap with its window, what it counts as spent, what is left and the last start it refused. A
+model whose provider
 declares no `connectors` is answered `503` `target-unavailable`.
 
 The command line is `--config <file>`, `--help` and `--version`, and nothing else; any other

@@ -1,0 +1,42 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: limits-each-ceiling-reads-what-the-spend-check-reads-and-names-the-last-start-it-refused
+summary: each ceiling lists its window, spent and left; a wake past what is left is refused and named as the last refusal
+timeline:
+- at: '2026-11-27T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"small","upstream_model":"small","wires":["chat"]}],"pods":[[]],"runpod":{"document":"listen = \"127.0.0.1:0\"\nowner_secret_file = \"/run/owner-secret\"\n\n[providers.runpod]\nkind = \"runpod-vllm\"\ndaily_cap_usd = 0.3\ntotal_cap_usd = 50\n\n[models.small]\nprovider = \"runpod\"\nwires = [\"chat\"]\ncontext_window = 65536\nhf_model = \"example/small-model\"\nimage = \"vllm/vllm-openai:v0.27.1\"\ngpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\nprice_per_hour_usd = 2\n"},"steps":[{"step":"mark_ready"},{"step":"request","method":"GET","path":"/v1/limits","body":""},{"step":"request","method":"POST","path":"/v1/models/small/wake","body":""},{"step":"request","method":"GET","path":"/v1/limits","body":""},{"step":"request","method":"GET","path":"/v1/models/small/status","body":""}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - 200 answered
+    - 503 spend-ceiling
+    - 200 answered
+    - 200 answered
+    bodies:
+    - '{"format":"llm-gateway.limits/1","limits":[{"provider":"runpod","ceiling":"daily","cap_usd":"0.300000","window_start_ms":0,"window_end_ms":86400000,"spent_usd":"0.000000","left_usd":"0.300000","last_refusal":null},{"provider":"runpod","ceiling":"total","cap_usd":"50.000000","window_start_ms":0,"window_end_ms":1000,"spent_usd":"0.000000","left_usd":"50.000000","last_refusal":null}]}'
+    - '{"error":{"code":"spend-ceiling","message":"the model''s pod was not started: it would pass a spend ceiling of its provider account, or that account''s spend is unknown"}}'
+    - '{"format":"llm-gateway.limits/1","limits":[{"provider":"runpod","ceiling":"daily","cap_usd":"0.300000","window_start_ms":0,"window_end_ms":86400000,"spent_usd":"0.000000","left_usd":"0.300000","last_refusal":{"at_ms":1000,"model":"small"}},{"provider":"runpod","ceiling":"total","cap_usd":"50.000000","window_start_ms":0,"window_end_ms":1000,"spent_usd":"0.000000","left_usd":"50.000000","last_refusal":null}]}'
+    - '{"model":"small","phase":"stopped"}'
+    retry_after:
+    - absent
+    - absent
+    - absent
+    - absent
+    acquired: 0
+    upstream: []
+    records: []
+    lifecycle_asks:
+    - wake small
+    - status small
+    pod_creates: 0

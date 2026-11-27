@@ -1608,6 +1608,9 @@ fn decide(
     if request.path == STATUS_LIST {
         return (status_list(request, shared), None);
     }
+    if request.path == crate::limits::PATH {
+        return (limits_list(request, shared), None);
+    }
     if let Some(id) = request.path.strip_prefix(calls::PREFIX) {
         return (call_record(request, shared, id), None);
     }
@@ -1834,6 +1837,27 @@ fn status_list(request: &Request<'_>, shared: &Shared) -> Outcome {
         JSON,
         status_list_body(shared.relay.as_ref(), &shared.dashboard),
     )
+}
+
+/// `GET /v1/limits` (`llm-gateway.gateway.LimitsRoute`, story:limits-read), after
+/// authentication, under the status list's method, body and readiness checks, all decided
+/// before the source is asked anything. Without a relay the list is empty.
+fn limits_list(request: &Request<'_>, shared: &Shared) -> Outcome {
+    if !request.is_read() {
+        return Outcome::NotAllowed("GET, HEAD");
+    }
+    if declares_body(request) {
+        return Outcome::Refused(RefusalCode::BodyNotAllowed);
+    }
+    if !serves_inspection(shared) {
+        return Outcome::Refused(RefusalCode::Unavailable);
+    }
+    let limits = shared
+        .relay
+        .as_ref()
+        .map(Relay::spend_limits)
+        .unwrap_or_default();
+    Outcome::Public(JSON, crate::limits::body(&limits))
 }
 
 /// `{"format":"llm-gateway.status/1","models":[…]}`, one entry per relayed model in alias order:

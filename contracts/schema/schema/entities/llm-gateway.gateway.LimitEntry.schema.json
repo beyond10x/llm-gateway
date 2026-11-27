@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LimitEntry",
+  "x-ess-name": "llm-gateway.gateway.LimitEntry",
+  "x-ess-kind": "entity",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "ceiling": {
+      "$ref": "#/$defs/llm-gateway.gateway.LimitCeiling"
+    },
+    "cap_usd": {
+      "type": "string"
+    },
+    "window_start_ms": {
+      "type": "integer"
+    },
+    "window_end_ms": {
+      "type": "integer"
+    },
+    "spent_usd": {
+      "type": "string"
+    },
+    "left_usd": {
+      "type": "string"
+    },
+    "last_refusal_at_ms": {
+      "type": "integer"
+    },
+    "last_refusal_model": {
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/llm-gateway.gateway.LimitEntry.State"
+    }
+  },
+  "required": [
+    "id",
+    "provider",
+    "ceiling",
+    "cap_usd",
+    "window_start_ms",
+    "window_end_ms",
+    "state"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:bd0380b7578261807223351adb91cdb9542857b03940b232961c9a380d775a6c",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.LimitCeiling": {
+      "title": "LimitCeiling",
+      "x-ess-name": "llm-gateway.gateway.LimitCeiling",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Daily",
+        "Total"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "code",
+          "type": "String",
+          "values": {
+            "Daily": "daily",
+            "Total": "total"
+          }
+        }
+      ]
+    },
+    "llm-gateway.gateway.LimitEntry.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.gateway.LimitEntry.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Declared"
+      ]
+    }
+  }
+}

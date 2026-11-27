@@ -74,7 +74,9 @@ pub use request::{
     LEGACY_POD_NAME_PREFIX, NON_THINKING_SAMPLING, POD_NAME_PREFIX, TAG_EPOCH, TAG_OWNER,
     TAG_REQUEST, Tags, in_namespace, pod_name, pod_request, vllm_entrypoint,
 };
-pub use spend::{AccountSpend, SpendCeiling, SpendPolicy, SpendRefusal, micro_usd, usd};
+pub use spend::{
+    AccountSpend, CeilingReading, SpendCeiling, SpendPolicy, SpendRefusal, micro_usd, usd,
+};
 pub use transport::{
     AccountSnapshot, CallFailure, ConnectorsBinding, ConnectorsRunpod, CreateAnswer, FailureCause,
     POD_CREATE_BODY_KEYS, Pod, PodListing, PodPlacement, PodRequest, PodStatus, PodStream,

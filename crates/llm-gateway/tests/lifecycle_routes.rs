@@ -461,6 +461,7 @@ fn every_phase_and_both_routes_are_declared_and_published() {
         "| `POST` | `/v1/models/{alias}/wake` | owner |",
         "| `GET`, `HEAD` | `/v1/models/{alias}/status` | owner |",
         "| `GET`, `HEAD` | `/v1/status` | owner |",
+        "| `GET`, `HEAD` | `/v1/limits` | owner |",
     ] {
         assert!(CONTRACT.contains(row), "docs/gateway.md has no row {row}");
     }
@@ -1120,4 +1121,40 @@ fn ollama_no_other_refusal_names_the_alias() {
             RefusalCode::TargetUnavailable.reason()
         )
     );
+}
+
+// --- The spend ceilings (story:limits-read) --------------------------------------------------
+
+/// A gateway composed without a relay, and one whose source reports no spend ceiling, list
+/// none; the read asks the source for no target, wake or status.
+#[test]
+fn limits_without_a_relay_or_a_ceiling_the_list_is_empty() {
+    let verifier = Arc::new(
+        SharedSecretVerifier::new(OwnerToken::new(OWNER.as_bytes().to_vec()).unwrap()).unwrap(),
+    );
+    let bare = Gateway::bind(
+        GatewayConfig::new("127.0.0.1:0".parse().unwrap()),
+        verifier,
+        RouteInventory::new(Vec::new()).unwrap(),
+    )
+    .unwrap();
+    bare.mark_ready();
+    let without_relay = send(bare.local_addr(), "GET", "/v1/limits", true, "");
+    bare.shutdown();
+    let source = Source::scripted(Vec::new(), Vec::new());
+    let handle = gateway(Arc::clone(&source), true, |_| {});
+    let without_ceiling = send(handle.local_addr(), "GET", "/v1/limits", true, "");
+    let head = send(handle.local_addr(), "HEAD", "/v1/limits", true, "");
+    handle.shutdown();
+    for answer in [&without_relay, &without_ceiling] {
+        assert_eq!(answer.status, 200, "{}", answer.body);
+        assert_eq!(answer.header("content-type"), Some("application/json"));
+        assert_eq!(
+            answer.body,
+            "{\"format\":\"llm-gateway.limits/1\",\"limits\":[]}"
+        );
+    }
+    assert_eq!(head.status, 200);
+    assert_eq!(head.body, "");
+    assert!(source.asks().is_empty(), "{:?}", source.asks());
 }

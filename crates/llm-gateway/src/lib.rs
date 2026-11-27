@@ -30,7 +30,8 @@
 //!   owner `POST /v1/models/{alias}/wake` and `GET /v1/models/{alias}/status`, answered from
 //!   [`RelayTargets::wake`] and [`RelayTargets::status`] as a [`ModelStatus`]; a model whose
 //!   source starts nothing for it has neither. `GET /v1/status` lists every relayed model with
-//!   its [`ModelKind`], wires, status and whether a call is answered now.
+//!   its [`ModelKind`], wires, status and whether a call is answered now, and `GET /v1/limits`
+//!   each spend ceiling [`RelayTargets::spend_limits`] reports as a [`SpendLimit`].
 //! - **Hand other wires to a translator.** A request on a wire its model's upstream does not
 //!   declare goes to the [`Translator`] the embedding composed with
 //!   [`Relay::with_translator`], which decodes it before any target is asked for and writes
@@ -52,6 +53,7 @@ mod finished;
 mod guide;
 mod inventory;
 mod json;
+mod limits;
 mod listing;
 mod metrics;
 mod relay;
@@ -81,6 +83,7 @@ pub use inventory::{
     AuthKind, BillingKind, Label, RouteInventory, RouteSummary, TargetLimits, TargetProvenance,
     TargetSummary,
 };
+pub use limits::{LimitCeiling, LimitRefusal, SpendLimit};
 pub use metrics::{CallPricing, Disposition, Metrics, Outcome, UsageRecord, UsageRecords};
 pub use relay::{
     Assembly, BasePath, BodyDecoder, CALLER_SESSION_HEADER, Caller, CredentialHeader,

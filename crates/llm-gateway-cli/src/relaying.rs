@@ -30,7 +30,7 @@ use llm_runpod::{
     CleanupReport, Clock, ComputeAuthorization, ConnectorsBinding, ConnectorsRunpod, Hold,
     HostingPolicy, Identifier, LeaseRegistry, ModelPhase, ModelStatus, PodListing, PodStream,
     PodTls, PoolError, RestBinding, RestRunpod, RunpodModel, RunpodPool, RunpodTransport,
-    SpendPolicy, SpendRefusal, StreamLease,
+    SpendCeiling, SpendPolicy, SpendRefusal, StreamLease,
 };
 use std::{
     collections::BTreeMap,
@@ -507,6 +507,9 @@ pub(crate) struct PoolTargets<T> {
     metrics: Arc<Metrics>,
     /// Per alias, the last deployment counted as a pod start.
     started: Mutex<BTreeMap<String, Identifier>>,
+    /// The provider whose spend ceilings the pool enforces ([`enforced_ceiling`]); `None` when
+    /// it enforces none (story:limits-read).
+    ceilings: Option<String>,
 }
 
 impl<T> PoolTargets<T> {
@@ -528,7 +531,15 @@ impl<T> PoolTargets<T> {
             connector,
             stopping,
             metrics,
-        ))
+        )
+        .with_ceilings(deployment))
+    }
+
+    /// The targets naming the provider whose ceilings the pool built from `deployment`
+    /// enforces, the same [`enforced_ceiling`] [`spend_policy`] gives the pool.
+    fn with_ceilings(mut self, deployment: &Deployment) -> Self {
+        self.ceilings = enforced_ceiling(deployment).map(|(name, _)| name.clone());
+        self
     }
 
     fn from_relayed(
@@ -547,6 +558,7 @@ impl<T> PoolTargets<T> {
             stopping,
             metrics,
             started: Mutex::new(BTreeMap::new()),
+            ceilings: None,
         }
     }
 
@@ -811,6 +823,36 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
                 .status(&relayed.alias)
                 .map_or_else(|_| stopped(), |status| gateway_status(&status)),
         )
+    }
+
+    /// `RunpodPool::spend_ceilings` (story:limits-read): each ceiling as the pool's spend check
+    /// counts it now, with one spend read under the pool's lock, named by the provider that
+    /// declares it. Empty, with no read, when the pool enforces none.
+    fn spend_limits(&self) -> Vec<llm_gateway::SpendLimit> {
+        let Some(provider) = &self.ceilings else {
+            return Vec::new();
+        };
+        self.pool
+            .spend_ceilings()
+            .into_iter()
+            .map(|reading| llm_gateway::SpendLimit {
+                provider: provider.clone(),
+                ceiling: match reading.ceiling {
+                    SpendCeiling::Daily => llm_gateway::LimitCeiling::Daily,
+                    SpendCeiling::Total => llm_gateway::LimitCeiling::Total,
+                },
+                cap_micro_usd: reading.cap_micro_usd,
+                window_start_ms: reading.window_start_ms,
+                window_end_ms: reading.window_end_ms,
+                spent_micro_usd: reading.spent_micro_usd,
+                last_refusal: reading.last_refusal.map(|(at_ms, model)| {
+                    llm_gateway::LimitRefusal {
+                        at_ms,
+                        model: model.as_str().to_owned(),
+                    }
+                }),
+            })
+            .collect()
     }
 }
 
@@ -1205,7 +1247,8 @@ where
         pods,
         Arc::clone(&parts.stopping),
         Arc::clone(&parts.metrics),
-    );
+    )
+    .with_ceilings(&subset);
     let pass = move |metrics: &Metrics| count_reaps(metrics, pool.reap());
     compose(deployment, parts, Arc::new(targets), Some(Box::new(pass)))
 }
@@ -1276,7 +1319,8 @@ fn start_rest(
         pods,
         Arc::clone(&parts.stopping),
         Arc::clone(&parts.metrics),
-    );
+    )
+    .with_ceilings(&subset);
     let pass = move |metrics: &Metrics| count_reaps(metrics, pool.reap());
     compose(deployment, parts, Arc::new(targets), Some(Box::new(pass)))
 }

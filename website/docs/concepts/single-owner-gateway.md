@@ -28,7 +28,7 @@ Every response is `cache-control: no-store` and `connection: close`: one request
 | `GET`, `HEAD` | `/metrics` | owner | The counters as Prometheus text ([Scrape the counters](../guides/scrape-the-counters.md)) |
 | `POST` | `/v1/models/{alias}/wake` | owner | Starts the model's pod; `202` at once with its phase. A model with no pod of its own is `path-unknown` |
 | `GET`, `HEAD` | `/v1/models/{alias}/status` | owner | The model's phase (`stopped`, `starting`, `ready`, `stopping`, `unreachable`) and profile; starts nothing. A hosted model's or route's is a probe of its endpoint; a Bedrock model's is `path-unknown` |
-| `GET`, `HEAD` | `/v1/status` | owner | Every relayed model's kind, wires, status and `callable`: whether a call for it is answered now |
+| `GET`, `HEAD` | `/v1/status` | owner | Every relayed model's kind, wires, status and `callable`: whether a call for it is answered now. A `ready` model whose last relayed calls show Claude Code answered and every other client rate limited adds `"reason":"serves-claude-code-clients-only"` |
 | `GET`, `HEAD` | `/v1/calls/{id}` | owner | The record of the model call whose answer carried `x-llm-gateway-call: {id}`, in flight or ended; an id the gateway does not hold is `call-unknown` ([Scrape the counters](../guides/scrape-the-counters.md#usage-events-on-standard-error)) |
 | `POST` | `/v1/chat/completions` | owner, or none under `IngressAuth::None` | The `chat` wire, relayed ([The relay](relay.md)) |
 | `POST` | `/v1/responses` | owner, or none under `IngressAuth::None` | The `responses` wire, relayed |

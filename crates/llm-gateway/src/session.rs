@@ -11,6 +11,13 @@ use std::{fmt::Write as _, net::IpAddr};
 
 /// The bytes of a session hash shown, as hex.
 const SESSION_HEX: usize = 12;
+/// The product Claude Code names in its `user-agent` (`claude-cli/<version> (…)`).
+const CLAUDE_CODE_PRODUCT: &str = "claude-cli";
+
+/// A user agent's product: what comes before its first `/` or space.
+fn product(agent: &str) -> &str {
+    agent.split(['/', ' ']).next().unwrap_or_default()
+}
 
 /// Who sent a call: a session hash and a label, the user agent, and the client's own retry
 /// count. Read from the request head.
@@ -34,16 +41,10 @@ impl Observed {
         let user_agent = header("user-agent").map(printable);
         let product = user_agent
             .as_deref()
-            .map(|agent| {
-                agent
-                    .split(['/', ' '])
-                    .next()
-                    .unwrap_or_default()
-                    .to_owned()
-            })
+            .map(product)
             .filter(|product| !product.is_empty());
-        let label = match product.as_deref() {
-            Some("claude-cli") => "claude-code".to_owned(),
+        let label = match product {
+            Some(CLAUDE_CODE_PRODUCT) => "claude-code".to_owned(),
             Some(product) if product.starts_with("codex") => "codex".to_owned(),
             Some(product) => product.chars().take(32).collect(),
             None => "unknown".to_owned(),
@@ -81,6 +82,15 @@ impl Observed {
             }
             .at(None),
         }
+    }
+
+    /// Whether the call's `user-agent` names Claude Code: its product, before the first `/` or
+    /// space, is `claude-cli` (story:hosted-status-probe). A Claude Code session header without
+    /// that user agent does not count.
+    pub(crate) fn claude_code_agent(&self) -> bool {
+        self.user_agent
+            .as_deref()
+            .is_some_and(|agent| product(agent) == CLAUDE_CODE_PRODUCT)
     }
 
     /// The session keyed by user agent and `peer`, when no header named it.

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.deployment.StatusProbe",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:4dd9d11a63f8d502b9ed125bd3167baf2803853a4186c4637d68c05a5bf87a19",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.deployment.StatusProbe": {
+      "title": "StatusProbe",
+      "x-ess-name": "llm-gateway.deployment.StatusProbe",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Models",
+        "CountTokens"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "code",
+          "type": "String",
+          "values": {
+            "CountTokens": "count-tokens",
+            "Models": "models"
+          }
+        }
+      ]
+    }
+  }
+}

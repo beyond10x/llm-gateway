@@ -170,7 +170,10 @@ A `[hosted.<alias>]` table serves a model from a hosted endpoint instead of a po
 the wire path's leading `/v1`, so `https://openrouter.ai/api/v1` asks `/api/v1/chat/completions`),
 `auth_kind` (`anonymous`,
 `bearer` or `api-key`), `credential_file` unless anonymous, `credential_header` for `api-key`,
-and optionally `billing_kind`, `upstream_model`, `context_window`, `tool_calling` and a
+and optionally `billing_kind`, `upstream_model`, `context_window`, `tool_calling`,
+`status_probe` (`models`, the default, reads `<base path>/models`; `count-tokens`, for a
+Messages endpoint with no model list, sends one `POST <base path>/messages/count_tokens` of a
+one-word message, which asks for no generation) and a
 `[hosted.<alias>.headers]` table of static non-secret headers such as `anthropic-version`. The
 credential file is read once at startup under the owner secret's rules (`endpoint-credential:<rule>`);
 a `bearer` endpoint is sent `authorization: Bearer <credential>`, an `api-key` endpoint the

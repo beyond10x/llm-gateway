@@ -318,7 +318,7 @@ export const BINDINGS: Record<string, Answer> = {
     return s.routes.map((r) => {
       const w = recent.get(r.route);
       return {
-        route: { text: r.route, sub: parts(r.upstream_model !== r.route && r.upstream_model) },
+        route: { text: r.route, sub: parts(r.upstream_model !== r.route && r.upstream_model, r.reason !== null && REASONS[r.reason]) },
         recent: w ? { text: `${w.failed} of ${w.calls}`, key: w.failed > 0 ? 'failed' : 'none', title: w.failed > 0 ? [...w.causes].join(', ') : undefined } : DASH,
         calls: r.calls,
         errors: r.errors,
@@ -367,6 +367,9 @@ export const BINDINGS: Record<string, Answer> = {
 
   'dashboard.Problems': (s, now, params) => problems(s, now, params.connection),
 };
+
+// What a route row says under its name for each reason the gateway gives it (GET /v1/status `reason`).
+const REASONS: Record<string, string> = { 'serves-claude-code-clients-only': 'reachable, serves Claude Code clients only' };
 
 export function answer(placeholder: string, snap: Snapshot, now: number, params: Params = {}): Row[] {
   const bind = BINDINGS[placeholder];

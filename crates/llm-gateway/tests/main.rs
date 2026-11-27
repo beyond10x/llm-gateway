@@ -31,6 +31,7 @@ mod prometheus_metrics;
 mod public_listing;
 mod relayed_session;
 mod security_w06_head_buffer;
+mod served_clients;
 mod service_account_ingress;
 mod spec_declarations;
 mod streamed_targets;

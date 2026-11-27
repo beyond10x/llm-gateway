@@ -41,7 +41,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:af1f60d501c58d1513d0cbe49d47b83a8c0e4c9a4b6fc46c27b60d457ddcad95",
+    "contract_digest": "slice-sha256/2:8cb0b1b5fadc41fae125af48422b68db3c0566b6d4423b5d28efdcb2066009f6",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -270,6 +270,9 @@
         },
         "token_price": {
           "$ref": "#/$defs/llm-gateway.deployment.TokenPriceDeclaration"
+        },
+        "status_probe": {
+          "$ref": "#/$defs/llm-gateway.deployment.StatusProbe"
         }
       },
       "required": [
@@ -784,6 +787,27 @@
         "TokenReviewCa",
         "ListenBind",
         "SignalInstall"
+      ]
+    },
+    "llm-gateway.deployment.StatusProbe": {
+      "title": "StatusProbe",
+      "x-ess-name": "llm-gateway.deployment.StatusProbe",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Models",
+        "CountTokens"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "code",
+          "type": "String",
+          "values": {
+            "CountTokens": "count-tokens",
+            "Models": "models"
+          }
+        }
       ]
     },
     "llm-gateway.deployment.StopSignal": {

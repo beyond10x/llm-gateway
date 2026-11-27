@@ -563,6 +563,10 @@ struct HostedDocument {
     /// What the model's tokens cost (`TokenPriceDeclaration`), read by [`token_price`].
     #[serde(default)]
     token_price: Option<toml::Table>,
+    /// The probe the model's status is read with (story:hosted-status-probe), read as a string
+    /// and checked as a value, so a refusal is `config:value` and quotes nothing.
+    #[serde(default)]
+    status_probe: Option<String>,
 }
 
 /// The key under which the toml crate presents a datetime to a visitor as a one-entry table.
@@ -1051,6 +1055,18 @@ pub enum HostedKind {
     Ollama,
 }
 
+/// How a hosted endpoint's status is read (`[hosted.<alias>] status_probe`,
+/// `llm-gateway.deployment.StatusProbe`, story:hosted-status-probe).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum StatusProbe {
+    /// `GET <base path>/models`, the probe `credential set` sends. The default.
+    #[default]
+    Models,
+    /// `POST <base path>/messages/count_tokens` of a one-word message for `upstream_model`, for
+    /// an endpoint that answers model calls and no model list; a Messages-wire model's alone.
+    CountTokens,
+}
+
 /// The base URL of an Ollama model that declares none: the server's own default address.
 pub const OLLAMA_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434";
 
@@ -1097,6 +1113,8 @@ pub struct Hosted {
     /// What the model's tokens cost (`[hosted.<alias>.token_price]`), which each call's usage
     /// record prices (story:cost-per-call); `None` when undeclared.
     pub token_price: Option<TokenPrice>,
+    /// How the model's status is read: [`StatusProbe::Models`] unless declared.
+    pub status_probe: StatusProbe,
 }
 
 /// `[hosted.<alias>] kind = "bedrock"`, with every default applied and every rule checked: a
@@ -1686,6 +1704,7 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         &key("wires"),
         "must not repeat a wire",
     )?;
+    let status_probe = status_probe(at, declared.status_probe.as_deref(), &wires)?;
     let auth_kind = match auth_kind {
         AuthKindDocument::Anonymous => AuthKind::Anonymous,
         AuthKindDocument::Bearer => AuthKind::Bearer,
@@ -1758,7 +1777,30 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         reasoning_effort,
         model_prefix: declared.model_prefix,
         token_price: token_price(at, declared.token_price)?,
+        status_probe,
     })
+}
+
+/// An endpoint's `status_probe` (story:hosted-status-probe): `models`, the default, or
+/// `count-tokens` on a model whose `wires` hold `messages`.
+///
+/// # Errors
+/// `config:value` naming `<at>.status_probe` for any other value, and for `count-tokens` without
+/// the Messages wire; the value is not quoted.
+fn status_probe(at: &str, declared: Option<&str>, wires: &[Wire]) -> Result<StatusProbe, Refusal> {
+    let key = format!("{at}.status_probe");
+    let probe = match declared {
+        None | Some("models") => StatusProbe::Models,
+        Some("count-tokens") => StatusProbe::CountTokens,
+        Some(_) => return Err(value(&key, "must be models or count-tokens")),
+    };
+    ensure(
+        probe != StatusProbe::CountTokens || wires.contains(&Wire::Messages),
+        &key,
+        "is count-tokens only on a model that declares the messages wire: the probe is a \
+         messages-wire token count",
+    )?;
+    Ok(probe)
 }
 
 /// `[hosted.<alias>] kind = "ollama"`, checked (story:ollama-route): an endpoint's table whose
@@ -1778,6 +1820,11 @@ fn validate_ollama(at: &str, alias: &str, mut declared: HostedDocument) -> Resul
         &key("model_prefix"),
         "is not a key of kind = \"ollama\": the model's status and model-not-pulled are read \
          for upstream_model alone",
+    )?;
+    ensure(
+        declared.status_probe.is_none(),
+        &key("status_probe"),
+        "is not a key of kind = \"ollama\": the model's status is read from the server's lists",
     )?;
     for (name, present) in [
         ("credential_file", declared.credential_file.is_some()),
@@ -2165,6 +2212,11 @@ fn validate_bedrock(at: &str, declared: HostedDocument) -> Result<Bedrock, Refus
              signed with the container credentials, and is given no default effort",
         )?;
     }
+    ensure(
+        declared.status_probe.is_none(),
+        &key("status_probe"),
+        "is not a key of kind = \"bedrock\": a Bedrock model reports no status",
+    )?;
     let required = |name: &str, given: Option<String>| {
         given.ok_or_else(|| value(&key(name), "is required for kind = \"bedrock\""))
     };

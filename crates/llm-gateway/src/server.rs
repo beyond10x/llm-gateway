@@ -11,7 +11,7 @@ use crate::{
     inventory::RouteInventory,
     listing::{self, InstructionAnswer},
     metrics::{self, Disposition, Metrics, UsageRecord},
-    relay::{self, Admitted, Call, ModelStatus, Relay, Wire},
+    relay::{self, Admitted, Call, ModelPhase, ModelStatus, Relay, Wire},
     review::{CallerToken, Principal, Review},
     session::Observed,
 };
@@ -755,6 +755,8 @@ fn record(
             observed,
             credential: call.credential,
             usage_note: call.usage_note,
+            rate_limit_error: call.rate_limit_error,
+            count_tokens,
         },
     );
     drop(call.progress);
@@ -1828,14 +1830,18 @@ fn status_list(request: &Request<'_>, shared: &Shared) -> Outcome {
     if !serves_inspection(shared) {
         return Outcome::Refused(RefusalCode::Unavailable);
     }
-    Outcome::Public(JSON, status_list_body(shared.relay.as_ref()))
+    Outcome::Public(
+        JSON,
+        status_list_body(shared.relay.as_ref(), &shared.dashboard),
+    )
 }
 
 /// `{"format":"llm-gateway.status/1","models":[…]}`, one entry per relayed model in alias order:
 /// `model`, `kind`, `wires` (the declared ones, in their order), then the keys of its status
 /// and `callable` when its source reports one (`RelayModel::callable`,
-/// `llm-gateway.gateway.StatusEntry`).
-fn status_list_body(relay: Option<&Relay>) -> String {
+/// `llm-gateway.gateway.StatusEntry`), then, for a `ready` model, `reason` when the record of
+/// its last relayed calls names one (story:hosted-status-probe, [`Dashboard::served_clients`]).
+fn status_list_body(relay: Option<&Relay>, dashboard: &Dashboard) -> String {
     let mut writer = crate::json::Writer::new();
     writer.begin_object();
     writer.key("format");
@@ -1858,6 +1864,13 @@ fn status_list_body(relay: Option<&Relay>) -> String {
             status_keys(&mut writer, &status);
             writer.key("callable");
             writer.boolean(model.callable(status.phase));
+            if let Some(reason) = dashboard
+                .served_clients(model.alias().as_str())
+                .filter(|_| status.phase == ModelPhase::Ready)
+            {
+                writer.key("reason");
+                writer.string(reason);
+            }
         }
         writer.end_object();
     }

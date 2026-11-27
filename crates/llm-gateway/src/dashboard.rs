@@ -21,9 +21,11 @@ use crate::{
     session::Observed,
     usage::Usage,
 };
+mod clients;
 mod kpi;
 mod upstream;
 
+pub use clients::SERVES_CLAUDE_CODE_CLIENTS_ONLY;
 pub(crate) use kpi::credential_label;
 pub use kpi::{MAX_CREDENTIALS as MAX_LIMIT_CREDENTIALS, hit_rate as cache_hit_rate};
 pub use upstream::UpstreamStats;
@@ -47,6 +49,13 @@ pub const MAX_USER_AGENT_BYTES: usize = 128;
 pub const REPEAT_WINDOW: Duration = Duration::from_secs(600);
 /// How many body digests are remembered.
 const DIGESTS: usize = 64;
+/// The most relayed model calls of one model the record of the clients it serves keeps, the
+/// oldest dropped first (story:hosted-status-probe; docs/gateway.md "Bounds",
+/// `served-clients-calls-kept`).
+pub const SERVED_CLIENTS_CALLS: usize = 20;
+/// The fewest calls from Claude Code, and as many from other clients, that record holds before
+/// it names a reason (`served-clients-min-calls`).
+pub const SERVED_CLIENTS_MIN_CALLS: usize = 2;
 
 /// One record type of the snapshot: its TypeScript name and its fields, each a JSON key and the
 /// TypeScript type of its value.
@@ -164,6 +173,7 @@ const ROUTE: RecordType = RecordType {
     name: "RouteRow",
     fields: &[
         ("route", "string"),
+        ("reason", "\"serves-claude-code-clients-only\" | null"),
         ("calls", "number"),
         ("errors", "number"),
         ("cancelled", "number"),
@@ -392,6 +402,10 @@ pub(crate) struct Finished {
     pub(crate) credential: Option<String>,
     /// Why the usage is unknown though the answer carried it, e.g. `undecodable(br)`.
     pub(crate) usage_note: Option<String>,
+    /// The answer's error was of type `rate_limit_error`.
+    pub(crate) rate_limit_error: bool,
+    /// The call was a token count, which the record of the clients a model serves leaves out.
+    pub(crate) count_tokens: bool,
 }
 
 /// One attempt of a passthrough call at its target.
@@ -579,6 +593,9 @@ struct RouteTotals {
     retry_wait: Histogram,
     last_call_end_ms: Option<u64>,
     upstream_model: Option<String>,
+    /// The route's last model calls a target answered, by client and answer
+    /// (story:hosted-status-probe).
+    clients: clients::ServedClients,
 }
 
 /// Whether a call failed: an outcome other than `ok`, or a status of 400 or more.
@@ -632,6 +649,13 @@ impl RouteTotals {
         self.last_call_end_ms = Some(now);
         if finished.upstream_model.is_some() {
             self.upstream_model.clone_from(&finished.upstream_model);
+        }
+        if let Some(status) = record.target_status.filter(|_| !finished.count_tokens) {
+            self.clients.note(
+                finished.observed.claude_code_agent(),
+                status,
+                finished.rate_limit_error,
+            );
         }
     }
 }
@@ -928,6 +952,16 @@ impl Dashboard {
             }
         }
         activity.into_values().collect()
+    }
+
+    /// What the record of `route`'s last relayed model calls shows about the clients it serves
+    /// (story:hosted-status-probe): [`SERVES_CLAUDE_CODE_CLIENTS_ONLY`], or `None` when it
+    /// shows nothing.
+    pub(crate) fn served_clients(&self, route: &str) -> Option<&'static str> {
+        self.lock()
+            .routes
+            .get(route)
+            .and_then(|totals| totals.clients.reason())
     }
 
     /// The change counter an event stream waits on.
@@ -1506,6 +1540,7 @@ fn route_record(
     let cache = upstream::route_cache(totals, upstream);
     record(writer, &ROUTE, |writer, key| match key {
         "route" => writer.string(route),
+        "reason" => optional_string(writer, totals.clients.reason()),
         "calls" => writer.number(totals.calls),
         "errors" => writer.number(totals.errors),
         "cancelled" => writer.number(totals.cancelled),
@@ -1774,6 +1809,8 @@ mod tests {
                     attempts: Vec::new(),
                     credential: None,
                     usage_note: None,
+                    rate_limit_error: false,
+                    count_tokens: false,
                     observed: observed.clone(),
                 },
             );
@@ -1827,6 +1864,8 @@ mod tests {
                     attempts: Vec::new(),
                     credential: None,
                     usage_note: None,
+                    rate_limit_error: false,
+                    count_tokens: false,
                     observed: observed.clone(),
                 },
             );
@@ -1892,6 +1931,8 @@ mod tests {
                 attempts: Vec::new(),
                 credential: None,
                 usage_note: None,
+                rate_limit_error: false,
+                count_tokens: false,
                 observed,
             },
         );
@@ -2071,6 +2112,8 @@ mod tests {
                 }],
                 credential: Some(super::credential_label(b"Bearer sk-ant-oat01-x")),
                 usage_note: None,
+                rate_limit_error: false,
+                count_tokens: false,
                 observed,
             },
         );
@@ -2145,6 +2188,8 @@ mod tests {
                 observed,
                 credential: Some("0a1b2c3d".to_owned()),
                 usage_note: None,
+                rate_limit_error: false,
+                count_tokens: false,
             },
         );
         dashboard.set_provider(Some(ProviderPanel {

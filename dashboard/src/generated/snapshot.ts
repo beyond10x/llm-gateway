@@ -83,6 +83,7 @@ export interface SessionRow {
 
 export interface RouteRow {
   route: string;
+  reason: "serves-claude-code-clients-only" | null;
   calls: number;
   errors: number;
   cancelled: number;

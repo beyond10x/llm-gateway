@@ -130,3 +130,13 @@ test('a failed call is named by its status and kind of error, and the strip and 
   expect(line.text).toContain(`claude-sonnet ${window.failed} of ${window.calls} failed, 429 rate limited`);
   expect((row.recent as { text: string }).text).toBe(`${window.failed} of ${window.calls}`);
 });
+
+test('a route the gateway saw serve Claude Code clients only says so under its name, and no other does', () => {
+  const snap = last('errors');
+  const routes = snap.routes.map((r, i) => (i === 0 ? { ...r, reason: 'serves-claude-code-clients-only' as const } : { ...r, reason: null }));
+  const rows = answer('dashboard.Routes', { ...snap, routes }, snap.now_ms, {});
+  const subs = rows.map((r) => ((r.route as { sub: { text: string }[] }).sub ?? []).map((p) => p.text));
+  expect(subs[0]).toContain('reachable, serves Claude Code clients only');
+  for (const sub of subs.slice(1)) expect(sub).not.toContain('reachable, serves Claude Code clients only');
+  expect(routes.length).toBeGreaterThan(1);
+});

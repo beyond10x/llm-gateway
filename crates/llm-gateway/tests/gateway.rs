@@ -1280,7 +1280,29 @@ fn enforced_bounds() -> Vec<Bound> {
 fn bounds_of_their_own() -> Vec<Bound> {
     let mut bounds = hosted_endpoint_bounds();
     bounds.extend(call_store_bounds());
+    bounds.extend(served_clients_bounds());
     bounds
+}
+
+/// The bounds of the record the status reads which clients a model serves from
+/// (story:hosted-status-probe), over a real socket: `served-clients-min-calls` calls of each
+/// client say something and one fewer says nothing, and `served-clients-calls-kept` calls are kept,
+/// the oldest dropped at one more.
+fn served_clients_bounds() -> Vec<Bound> {
+    vec![
+        Bound {
+            name: "served-clients-calls-kept",
+            value: 20,
+            direction: Direction::Maximum,
+            admits: Box::new(crate::served_clients::the_first_of_n_calls_is_kept),
+        },
+        Bound {
+            name: "served-clients-min-calls",
+            value: 2,
+            direction: Direction::Minimum,
+            admits: Box::new(crate::served_clients::n_calls_of_each_add_the_reason),
+        },
+    ]
 }
 
 /// The bounds of a `BasePath` (story:hosted-base-path) and a `StaticHeader`

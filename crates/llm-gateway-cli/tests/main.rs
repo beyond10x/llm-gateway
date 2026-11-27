@@ -59,6 +59,7 @@ mod security_w06_buffers;
 mod security_w07_hosted;
 mod security_w12_spend;
 mod spend_ledger;
+mod status_probe;
 mod subscription_passthrough;
 mod support;
 mod tls_client_gone;

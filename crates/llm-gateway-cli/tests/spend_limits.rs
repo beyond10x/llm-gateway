@@ -437,3 +437,43 @@ fn limits_an_unknown_spend_reads_null_and_names_no_refusal() {
         list(&[row("daily", "10.000000", (0, DAY_MS), None, None)])
     );
 }
+
+/// A wake that would pass both ceilings is refused for the daily one, and both rows name it.
+#[test]
+fn limits_a_start_past_both_ceilings_is_the_last_refusal_of_both() {
+    let fixture = Fixture::new("limits-both");
+    let deployment = deployment(&fixture, "daily_cap_usd = 10\ntotal_cap_usd = 10\n", None);
+    let runpod = EmulatedRunpod::new();
+    spend(&runpod, 9_666_667, 9_666_667);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        Arc::new(NoPod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let refused = wake(running.local_addr());
+    let read = limits(running.local_addr());
+    running.shutdown();
+    assert!(refused.contains("\"code\":\"spend-ceiling\""), "{refused}");
+    let spent_left = Some(("9.666667", "0.333333"));
+    assert_eq!(
+        read,
+        list(&[
+            row(
+                "daily",
+                "10.000000",
+                (0, DAY_MS),
+                spent_left,
+                Some((1_000, "small"))
+            ),
+            row(
+                "total",
+                "10.000000",
+                (0, 1_000),
+                spent_left,
+                Some((1_000, "small"))
+            ),
+        ])
+    );
+}

@@ -3,6 +3,7 @@
 
 mod adversary;
 mod adversary2;
+mod adversary_limits_read;
 mod adversary_secure_cloud;
 mod adversary_w02;
 mod adversary_w04_hold;
